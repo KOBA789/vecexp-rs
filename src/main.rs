@@ -47,6 +47,7 @@ impl<'a> VM<'a> {
             };
         }
 
+        println!("out of bound");
         None
     }
 }
@@ -132,30 +133,53 @@ impl<'a> Scanner for StdinScanner<'a> {
     }
 }
 
+/*
+検証,名詞,サ変接続,,,,,検証,ケンショウ,ケンショー
+する,動詞,自立,,,サ変・スル,基本形,する,スル,スル
+。,記号,句点,,,,,。,。,。
+EOS
+
+=> 現在形
+*/
+
+/*
+検証,名詞,サ変接続,,,,,検証,ケンショウ,ケンショー
+し,動詞,自立,,,サ変・スル,連用形,する,シ,シ
+た,助動詞,,,,特殊・タ,基本形,た,タ,タ
+。,記号,句点,,,,,。,。,。
+EOS
+
+=> 過去形
+ */
+
 fn main() {
     let stdin = io::stdin();
     let locked = stdin.lock();
 
     let mut scanner = StdinScanner::new(locked);
     let mut vm = VM::new(vec![
-        OpCode::Next,
-        OpCode::Expect(0, "すもも", 100),
-        OpCode::Expect(1, "名詞", 100),
-        OpCode::Next,
-        OpCode::Expect(0, "も", 100),
-        OpCode::Expect(1, "助詞", 100),
-        OpCode::Next,
-        OpCode::Expect(0, "もも", 100),
-        OpCode::Next,
-        OpCode::Expect(0, "も", 100),
-        OpCode::Next,
-        OpCode::Expect(0, "もも", 100),
-        OpCode::Next,
-        OpCode::Expect(0, "の", 100),
-        OpCode::Next,
-        OpCode::Expect(0, "うち", 100),
-        OpCode::Match("ok"),
+        OpCode::Jump(2),
         OpCode::Fail,
+        OpCode::Next,
+        OpCode::Expect(1, "名詞", 1),
+        OpCode::Expect(2, "サ変接続", 1),
+        OpCode::Next,
+        OpCode::Expect(1, "動詞", 1),
+        OpCode::Expect(5, "サ変・スル", 1),
+        OpCode::Expect(6, "基本形", 13),
+        OpCode::Next,
+        OpCode::Expect(1, "記号", 1),
+        OpCode::Expect(2, "句点", 1),
+        OpCode::Match("現在形"),
+        OpCode::Expect(6, "連用形", 1),
+        OpCode::Next,
+        OpCode::Expect(1, "助動詞", 1),
+        OpCode::Expect(5, "特殊・タ", 1),
+        OpCode::Expect(6, "基本形", 1),
+        OpCode::Next,
+        OpCode::Expect(1, "記号", 1),
+        OpCode::Expect(2, "句点", 1),
+        OpCode::Match("過去形"),
     ]);
-    assert_eq!(vm.exec(&mut scanner), Some("ok"));
+    println!("{}", vm.exec(&mut scanner).unwrap());
 }
