@@ -1,0 +1,6 @@
+[package]
+name = "vecexp-rs"
+version = "0.1.0"
+authors = ["Hidekazu Kobayashi <kobahide789@gmail.com>"]
+
+[dependencies]
