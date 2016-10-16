@@ -141,7 +141,7 @@ impl<'a, S: Scanner> Finder<'a, S> {
 
         while self.scanner.next() {
             let word: Vec<String> = self.scanner.peek().clone();
-            let is_period = word[1] == "句点";
+            let is_period = word[2] == "句点";
             self.sentence.push(word);
 
             if is_period {
