@@ -7,6 +7,7 @@ enum OpCode<'a> {
     Match(&'a str),
     Jump(usize),
     Next,
+    Noop,
 }
 
 struct VM<'a> {
@@ -24,7 +25,11 @@ impl<'a> VM<'a> {
         VM { pc: 0, code: code }
     }
 
-    fn exec<'b>(&'b mut self, scanner: &mut Scanner) -> Option<&str> {
+    fn reset(&mut self) {
+        self.pc = 0;
+    }
+
+    fn exec(&mut self, scanner: &mut Scanner) -> Option<&str> {
         while self.pc < self.code.len() {
             let ref op = self.code[self.pc];
             let ref next_state = match *op {
@@ -39,6 +44,7 @@ impl<'a> VM<'a> {
                     true => State::Going(self.pc + 1),
                     false => State::Done(None),
                 },
+                OpCode::Noop => State::Going(self.pc + 1)
             };
 
             match *next_state {
@@ -52,23 +58,39 @@ impl<'a> VM<'a> {
     }
 }
 
+type Morpheme = Vec<String>;
+
 trait Scanner {
     fn expect(&self, col: usize, pat: &str) -> Option<bool>;
     fn next(&mut self) -> bool;
+    fn peek(&self) -> &Morpheme;
 }
 
 struct OnMemoryScanner<'a> {
-    input: &'a Vec<[&'a str; 10]>,
+    input: &'a [Morpheme],
     position: usize,
 }
 
 impl<'a> OnMemoryScanner<'a> {
-    fn new(input: &'a Vec<[&'a str; 10]>) -> OnMemoryScanner<'a> {
+    fn new(input: &'a [Morpheme]) -> OnMemoryScanner<'a> {
         OnMemoryScanner { input: input, position: 0 }
     }
 
     fn is_eos(&self) -> bool {
         self.input.len() <= self.position
+    }
+
+    fn consume(&mut self) -> &[Morpheme] {
+        let ret = &self.input[..self.position+1];
+        self.input = &self.input[self.position+1..];
+        self.position = 0;
+
+        ret
+    }
+
+    fn step(&mut self) {
+        self.input = &self.input[1..];
+        self.position = 0;
     }
 }
 
@@ -81,7 +103,7 @@ impl<'a> Scanner for OnMemoryScanner<'a> {
         Some(self.input[self.position][col] == pat)
     }
 
-    fn next<'b>(&'b mut self) -> bool {
+    fn next(&mut self) -> bool {
         if self.is_eos() {
             return false;
         }
@@ -89,6 +111,86 @@ impl<'a> Scanner for OnMemoryScanner<'a> {
         self.position += 1;
 
         !self.is_eos()
+    }
+
+    fn peek(&self) -> &Morpheme {
+        &self.input[self.position]
+    }
+}
+
+struct Finder<'a, S> {
+    scanner: S,
+    vm: VM<'a>,
+    sentence: Vec<Morpheme>,
+    is_eos: bool,
+}
+
+impl<'a, S: Scanner> Finder<'a, S> {
+    fn new(scanner: S, vm: VM<'a>) -> Finder<'a, S> {
+        Finder {
+            scanner: scanner,
+            vm: vm,
+            sentence: Vec::with_capacity(50),
+            is_eos: false,
+        }
+    }
+
+    fn read_sentence(&mut self) -> bool {
+        if self.is_eos { return false; }
+        self.sentence.truncate(0);
+
+        while self.scanner.next() {
+            let word: Vec<String> = self.scanner.peek().clone();
+            let is_period = word[1] == "句点";
+            self.sentence.push(word);
+
+            if is_period {
+                return true;
+            }
+        }
+
+        self.is_eos = true;
+        return true;
+    }
+
+    fn next_sentence(&mut self) -> bool {
+        let is_going = self.read_sentence();
+        if !is_going {
+            return false;
+        }
+
+        let mut scanner = OnMemoryScanner::new(&self.sentence.as_slice());
+        while !scanner.is_eos() {
+            //println!("{:?}", scanner.input);
+
+            self.vm.reset();
+            let result = self.vm.exec(&mut scanner);
+
+            match result {
+                Some(_) => {
+                    let matched = scanner.consume().to_vec();
+                    //self.sentence;
+
+                    if matched.len() < 4 {
+                        print!("*\t*\t*\t*\t*\t*\t*\t*\t*\t*\t");
+                    }
+                    for line in matched.iter().map(|m| m.join("\t")) {
+                        print!("{}\t", line);
+                    }
+                    println!("");
+                },
+                None => {
+                    scanner.step();
+                },
+            }
+        }
+
+        return true;
+    }
+
+    fn find(&mut self) {
+        while self.next_sentence() {
+        }
     }
 }
 
@@ -109,7 +211,11 @@ impl<'a> Scanner for StdinScanner<'a> {
         Some(self.row[col].as_str() == pat)
     }
 
-    fn next<'b>(&'b mut self) -> bool {
+    fn peek(&self) -> &Vec<String> {
+        &self.row
+    }
+
+    fn next(&mut self) -> bool {
         let mut buffer = String::new();
         match self.stdin.read_line(&mut buffer) {
             Ok(n) => {
@@ -120,7 +226,7 @@ impl<'a> Scanner for StdinScanner<'a> {
                 let trim = buffer.trim();
 
                 if trim == "EOS" {
-                    return false;
+                    return true;
                 }
 
                 let split = trim.split(',');
@@ -156,30 +262,27 @@ fn main() {
     let stdin = io::stdin();
     let locked = stdin.lock();
 
-    let mut scanner = StdinScanner::new(locked);
-    let mut vm = VM::new(vec![
+    let scanner = StdinScanner::new(locked);
+    let vm = VM::new(vec![
         OpCode::Jump(2),
         OpCode::Fail,
-        OpCode::Next,
         OpCode::Expect(1, "名詞", 1),
-        OpCode::Expect(2, "サ変接続", 1),
         OpCode::Next,
-        OpCode::Expect(1, "動詞", 1),
-        OpCode::Expect(5, "サ変・スル", 1),
-        OpCode::Expect(6, "基本形", 13),
+        OpCode::Expect(1, "名詞", 7),
+        OpCode::Expect(2, "接尾", 1),
         OpCode::Next,
-        OpCode::Expect(1, "記号", 1),
-        OpCode::Expect(2, "句点", 1),
-        OpCode::Match("現在形"),
-        OpCode::Expect(6, "連用形", 1),
+        OpCode::Expect(1, "助詞", 1),
         OpCode::Next,
-        OpCode::Expect(1, "助動詞", 1),
-        OpCode::Expect(5, "特殊・タ", 1),
-        OpCode::Expect(6, "基本形", 1),
-        OpCode::Next,
-        OpCode::Expect(1, "記号", 1),
-        OpCode::Expect(2, "句点", 1),
-        OpCode::Match("過去形"),
+        OpCode::Expect(1, "動詞", 11), //9
+        OpCode::Match("OK1"),
+        OpCode::Expect(1, "名詞", 1),
+        OpCode::Expect(3, "サ変接続", 1),
+        OpCode::Match("OK2"),
+        OpCode::Noop,
     ]);
-    println!("{}", vm.exec(&mut scanner).unwrap());
+
+    let mut finder = Finder::new(scanner, vm);
+    finder.find();
+
+    //println!("{}", vm.exec(&mut scanner).unwrap());
 }
