@@ -63,7 +63,7 @@ type Morpheme = Vec<String>;
 trait Scanner {
     fn expect(&self, col: usize, pat: &str) -> Option<bool>;
     fn next(&mut self) -> bool;
-    fn peek(&self) -> Morpheme;
+    fn peek(&self) -> &Morpheme;
 }
 
 struct OnMemoryScanner<'a> {
@@ -113,8 +113,8 @@ impl<'a> Scanner for OnMemoryScanner<'a> {
         !self.is_eos()
     }
 
-    fn peek(&self) -> Morpheme {
-        self.input[self.position].clone()
+    fn peek(&self) -> &Morpheme {
+        &self.input[self.position]
     }
 }
 
@@ -140,7 +140,7 @@ impl<'a, S: Scanner> Finder<'a, S> {
         self.sentence.truncate(0);
 
         while self.scanner.next() {
-            let word: Vec<String> = self.scanner.peek();
+            let word: Vec<String> = self.scanner.peek().clone();
             let is_period = word[1] == "句点";
             self.sentence.push(word);
 
@@ -211,8 +211,8 @@ impl<'a> Scanner for StdinScanner<'a> {
         Some(self.row[col].as_str() == pat)
     }
 
-    fn peek(&self) -> Morpheme {
-        self.row.clone()
+    fn peek(&self) -> &Vec<String> {
+        &self.row
     }
 
     fn next(&mut self) -> bool {
