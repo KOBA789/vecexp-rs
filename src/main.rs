@@ -1,5 +1,7 @@
 use std::io;
 use std::io::prelude::*;
+use std::cmp;
+use std::fmt;
 
 enum OpCode<'a> {
     Expect(usize, &'a str, usize),
@@ -8,6 +10,19 @@ enum OpCode<'a> {
     Jump(usize),
     Next,
     Noop,
+}
+
+impl<'a> fmt::Debug for OpCode<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            OpCode::Fail => write!(f, "OpCode::Fail"),
+            OpCode::Match(ret) => write!(f, "OpCode::Match({})", ret),
+            OpCode::Jump(pc) => write!(f, "OpCode::Jump({})", pc),
+            OpCode::Expect(col, pat, pc) => write!(f, "OpCode::Expect({}, {}, {})", col, pat, pc),
+            OpCode::Next => write!(f, "OpCode::Next"),
+            OpCode::Noop => write!(f, "OpCode::Noop"),
+        }
+    }
 }
 
 struct VM<'a> {
@@ -23,6 +38,33 @@ enum State<'a> {
 impl<'a> VM<'a> {
     fn new(code: Vec<OpCode<'a>>) -> VM<'a> {
         VM { pc: 0, code: code }
+    }
+
+    fn parse(input: &'a Vec<String>) -> VM<'a> {
+        let mut code: Vec<OpCode<'a>> =  vec![];
+
+        for op_str in input {
+            let opcode_operand: Vec<&str> = op_str.split(":").collect();
+            let operands = &opcode_operand[1..];
+            code.push(
+                match &opcode_operand[0][..] {
+                    "Fail" => OpCode::Fail,
+                    "Match" => OpCode::Match(operands[0]),
+                    "Jump" => OpCode::Jump(operands[0].parse::<usize>().unwrap()),
+                    "Expect" => OpCode::Expect(
+                        operands[0].parse::<usize>().unwrap(),
+                        operands[1],
+                        operands[2].parse::<usize>().unwrap()),
+                    "Next" => OpCode::Next,
+                    "Noop" => OpCode::Noop,
+                    _ => panic!("unsupported opcode")
+                }
+            );
+        }
+
+        println!("{:?}", code);
+
+        VM::new(code)
     }
 
     fn reset(&mut self) {
@@ -69,11 +111,12 @@ trait Scanner {
 struct OnMemoryScanner<'a> {
     input: &'a [Morpheme],
     position: usize,
+    start: usize,
 }
 
 impl<'a> OnMemoryScanner<'a> {
     fn new(input: &'a [Morpheme]) -> OnMemoryScanner<'a> {
-        OnMemoryScanner { input: input, position: 0 }
+        OnMemoryScanner { input: input, position: 0, start: 0 }
     }
 
     fn is_eos(&self) -> bool {
@@ -81,16 +124,23 @@ impl<'a> OnMemoryScanner<'a> {
     }
 
     fn consume(&mut self) -> &[Morpheme] {
-        let ret = &self.input[..self.position+1];
-        self.input = &self.input[self.position+1..];
-        self.position = 0;
+        let ret = &self.input[self.start..self.position+1];
+        self.start = self.position;
 
         ret
     }
 
     fn step(&mut self) {
-        self.input = &self.input[1..];
-        self.position = 0;
+        self.start += 1;
+        self.position = self.start;
+    }
+
+    fn pre_match(&self) -> &[Morpheme] {
+        &self.input[0..self.start-1]
+    }
+
+    fn post_match(&self) -> &[Morpheme] {
+        &self.input[self.position+1..]
     }
 }
 
@@ -141,7 +191,7 @@ impl<'a, S: Scanner> Finder<'a, S> {
 
         while self.scanner.next() {
             let word: Vec<String> = self.scanner.peek().clone();
-            let is_period = word[2] == "句点";
+            let is_period = word[2] == "句点" || word[0] == "◇" || word[0] == "▽";
             self.sentence.push(word);
 
             if is_period {
@@ -161,22 +211,57 @@ impl<'a, S: Scanner> Finder<'a, S> {
 
         let mut scanner = OnMemoryScanner::new(&self.sentence.as_slice());
         while !scanner.is_eos() {
-            //println!("{:?}", scanner.input);
-
             self.vm.reset();
             let result = self.vm.exec(&mut scanner);
 
             match result {
                 Some(_) => {
                     let matched = scanner.consume().to_vec();
-                    //self.sentence;
 
-                    if matched.len() < 4 {
-                        print!("*\t*\t*\t*\t*\t*\t*\t*\t*\t*\t");
+                    let win_size = 3;
+
+                    let pre_match = scanner.pre_match();
+                    let post_match = scanner.post_match();
+
+                    let pre_fixed_pos = if win_size > pre_match.len() {
+                        pre_match.len()
+                    } else {
+                        pre_match.len() - win_size
+                    };
+                    let pre_fixed = &pre_match[pre_fixed_pos..];
+                    let pre_outer = &pre_match[0..pre_fixed_pos];
+
+                    let post_fixed_pos = cmp::min(win_size, post_match.len());
+                    let post_fixed = &post_match[0..post_fixed_pos];
+                    let post_outer = &post_match[post_fixed_pos..];
+
+                    print!("|");
+                    for pre in pre_outer.iter().map(|m| m[0].clone()) {
+                        print!("{}|", pre);
                     }
-                    for line in matched.iter().map(|m| m.join("\t")) {
+                    print!("\t");
+                    for _ in 0..(win_size - pre_fixed.len()) {
+                        print!("\t");
+                    }
+                    for pre in pre_fixed.iter().map(|m| m[0].clone()) {
+                        print!("{}\t", pre);
+                    }
+
+                    for line in matched.iter().map(|m| m[0].clone()) {
                         print!("{}\t", line);
                     }
+
+                    for post in post_fixed.iter().map(|m| m[0].clone()) {
+                        print!("{}\t", post);
+                    }
+                    for _ in 0..(win_size - post_fixed.len()) {
+                        print!("\t");
+                    }
+                    print!("|");
+                    for post in post_outer.iter().map(|m| m[0].clone()) {
+                        print!("{}|", post);
+                    }
+
                     println!("");
                 },
                 None => {
@@ -239,50 +324,16 @@ impl<'a> Scanner for StdinScanner<'a> {
     }
 }
 
-/*
-検証,名詞,サ変接続,,,,,検証,ケンショウ,ケンショー
-する,動詞,自立,,,サ変・スル,基本形,する,スル,スル
-。,記号,句点,,,,,。,。,。
-EOS
-
-=> 現在形
-*/
-
-/*
-検証,名詞,サ変接続,,,,,検証,ケンショウ,ケンショー
-し,動詞,自立,,,サ変・スル,連用形,する,シ,シ
-た,助動詞,,,,特殊・タ,基本形,た,タ,タ
-。,記号,句点,,,,,。,。,。
-EOS
-
-=> 過去形
- */
-
 fn main() {
     let stdin = io::stdin();
     let locked = stdin.lock();
 
     let scanner = StdinScanner::new(locked);
-    let vm = VM::new(vec![
-        OpCode::Jump(2),
-        OpCode::Fail,
-        OpCode::Expect(1, "名詞", 1),
-        OpCode::Next,
-        OpCode::Expect(1, "名詞", 7),
-        OpCode::Expect(2, "接尾", 1),
-        OpCode::Next,
-        OpCode::Expect(1, "助詞", 1),
-        OpCode::Next,
-        OpCode::Expect(1, "動詞", 11), //9
-        OpCode::Match("OK1"),
-        OpCode::Expect(1, "名詞", 1),
-        OpCode::Expect(3, "サ変接続", 1),
-        OpCode::Match("OK2"),
-        OpCode::Noop,
-    ]);
+
+    let args: Vec<String> = std::env::args().collect();
+    let input = args.as_slice()[1..].to_vec();
+    let vm = VM::parse(&input);
 
     let mut finder = Finder::new(scanner, vm);
     finder.find();
-
-    //println!("{}", vm.exec(&mut scanner).unwrap());
 }
