@@ -3,6 +3,7 @@ use std::io::prelude::*;
 use std::cmp;
 use std::fmt;
 
+#[derive(Debug)]
 enum OpCode<'a> {
     Expect(usize, &'a str, usize),
     Fail,
@@ -10,19 +11,6 @@ enum OpCode<'a> {
     Jump(usize),
     Next,
     Noop,
-}
-
-impl<'a> fmt::Debug for OpCode<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            OpCode::Fail => write!(f, "OpCode::Fail"),
-            OpCode::Match(ret) => write!(f, "OpCode::Match({})", ret),
-            OpCode::Jump(pc) => write!(f, "OpCode::Jump({})", pc),
-            OpCode::Expect(col, pat, pc) => write!(f, "OpCode::Expect({}, {}, {})", col, pat, pc),
-            OpCode::Next => write!(f, "OpCode::Next"),
-            OpCode::Noop => write!(f, "OpCode::Noop"),
-        }
-    }
 }
 
 struct VM<'a> {
@@ -62,8 +50,6 @@ impl<'a> VM<'a> {
             );
         }
 
-        println!("{:?}", code);
-
         VM::new(code)
     }
 
@@ -95,8 +81,7 @@ impl<'a> VM<'a> {
             };
         }
 
-        println!("out of bound");
-        None
+        panic!("out of bound");
     }
 }
 
@@ -224,7 +209,7 @@ impl<'a, S: Scanner> Finder<'a, S> {
                     let post_match = scanner.post_match();
 
                     let pre_fixed_pos = if win_size > pre_match.len() {
-                        pre_match.len()
+                        0
                     } else {
                         pre_match.len() - win_size
                     };
