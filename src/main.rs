@@ -1,7 +1,6 @@
 use std::io;
 use std::io::prelude::*;
 use std::cmp;
-use std::fmt;
 
 #[derive(Debug)]
 enum OpCode<'a> {
@@ -108,24 +107,18 @@ impl<'a> OnMemoryScanner<'a> {
         self.input.len() <= self.position
     }
 
-    fn consume(&mut self) -> &[Morpheme] {
+    fn consume(&mut self) -> (&[Morpheme], &[Morpheme], &[Morpheme]) {
+        let pre = &self.input[0..self.start];
+        let post = &self.input[self.position+1..];
         let ret = &self.input[self.start..self.position+1];
         self.start = self.position;
 
-        ret
+        (pre, ret, post)
     }
 
     fn step(&mut self) {
         self.start += 1;
         self.position = self.start;
-    }
-
-    fn pre_match(&self) -> &[Morpheme] {
-        &self.input[0..self.start-1]
-    }
-
-    fn post_match(&self) -> &[Morpheme] {
-        &self.input[self.position+1..]
     }
 }
 
@@ -176,7 +169,19 @@ impl<'a, S: Scanner> Finder<'a, S> {
 
         while self.scanner.next() {
             let word: Vec<String> = self.scanner.peek().clone();
-            let is_period = word[2] == "句点" || word[0] == "◇" || word[0] == "▽";
+            let is_period = word[2] == "句点" ||
+                word[0] == "◇" ||
+                word[0] == "◆" ||
+                word[0] == "▽" ||
+                word[0] == "▼" ||
+                word[0] == "△" ||
+                word[0] == "▲" ||
+                word[0] == "□" ||
+                word[0] == "■" ||
+                word[0] == "○" ||
+                word[0] == "●" ||
+                word[0] == "【" ||
+                word[0] == "】";
             self.sentence.push(word);
 
             if is_period {
@@ -201,12 +206,9 @@ impl<'a, S: Scanner> Finder<'a, S> {
 
             match result {
                 Some(_) => {
-                    let matched = scanner.consume().to_vec();
-
                     let win_size = 3;
 
-                    let pre_match = scanner.pre_match();
-                    let post_match = scanner.post_match();
+                    let (pre_match, matched, post_match) = scanner.consume();
 
                     let pre_fixed_pos = if win_size > pre_match.len() {
                         0
@@ -232,7 +234,7 @@ impl<'a, S: Scanner> Finder<'a, S> {
                         print!("{}\t", pre);
                     }
 
-                    for line in matched.iter().map(|m| m[0].clone()) {
+                    for line in matched.iter().map(|m| m.join("\t")) {
                         print!("{}\t", line);
                     }
 
@@ -296,6 +298,18 @@ impl<'a> Scanner for StdinScanner<'a> {
                 let trim = buffer.trim();
 
                 if trim == "EOS" {
+                    self.row = vec![
+                        "。".to_string(),
+                        "記号".to_string(),
+                        "句点".to_string(),
+                        "*".to_string(),
+                        "*".to_string(),
+                        "*".to_string(),
+                        "*".to_string(),
+                        "。".to_string(),
+                        "。".to_string(),
+                        "。".to_string(),
+                    ];
                     return true;
                 }
 
@@ -316,6 +330,7 @@ fn main() {
     let scanner = StdinScanner::new(locked);
 
     let args: Vec<String> = std::env::args().collect();
+
     let input = args.as_slice()[1..].to_vec();
     let vm = VM::parse(&input);
 
