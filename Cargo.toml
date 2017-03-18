@@ -4,3 +4,10 @@ version = "0.1.0"
 authors = ["Hidekazu Kobayashi <kobahide789@gmail.com>"]
 
 [dependencies]
+filebuffer = { git = "https://github.com/ruuda/filebuffer.git", rev = "4a55662" }
+rustc-serialize = "*"
+bincode = "*"
+byteorder = "*"
+
+[profile.release]
+debug = true
