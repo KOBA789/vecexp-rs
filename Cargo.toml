@@ -8,6 +8,7 @@ filebuffer = { git = "https://github.com/ruuda/filebuffer.git", rev = "4a55662" 
 rustc-serialize = "*"
 bincode = "*"
 byteorder = "*"
+clap = "*"
 
 [profile.release]
 debug = true

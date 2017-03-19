@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::cmp;
 
 type ValId = u32;
-type Morpheme = [ValId];
+type Morpheme = [ValId; ::COLS];
 
 #[derive(Debug)]
 enum OpCode<'a> {

@@ -7,6 +7,11 @@ pub struct IndexFile {
     path: PathBuf,
 }
 
+pub struct IndexFileBody {
+    feature_indices: [Vec<String>; ::COLS],
+    sentence_index: Vec<(u32, u32)>,
+}
+
 impl IndexFile {
     pub fn new(path: PathBuf) -> IndexFile {
         IndexFile { path: path }
