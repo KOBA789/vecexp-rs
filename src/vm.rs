@@ -1,37 +1,39 @@
 use std::io;
 use std::io::prelude::*;
 use std::cmp;
+use std::slice::Iter;
+use std::iter::Peekable;
+use ::{Feat, FeatId, FeatIdSize, Cols, Morpheme};
 
-type ValId = u32;
-type Morpheme = [ValId; ::COLS];
+type ResultCode = u32;
 
 #[derive(Debug)]
-enum OpCode<'a> {
-    Expect(usize, ValId, usize),
+pub enum OpCode {
+    Expect(usize, FeatId, usize),
     Fail,
-    Match(&'a str),
+    Match(ResultCode),
     Jump(usize),
     Next,
     Noop,
 }
 
-struct VM<'a> {
+pub struct VM {
     pc: usize,
-    code: Vec<OpCode<'a>>,
+    code: Vec<OpCode>,
 }
 
-enum State<'a> {
-    Done(Option<&'a str>),
+enum State {
+    Done(Option<ResultCode>),
     Going(usize)
 }
 
-impl<'a> VM<'a> {
-    fn new(code: Vec<OpCode<'a>>) -> VM<'a> {
+impl<'a> VM {
+    pub fn new(code: Vec<OpCode>) -> VM {
         VM { pc: 0, code: code }
     }
 
-    fn parse(input: &'a Vec<String>) -> VM<'a> {
-        let mut code: Vec<OpCode<'a>> =  vec![];
+    pub fn parse(input: Vec<String>) -> VM {
+        let mut code: Vec<OpCode> =  vec![];
 
         for op_str in input {
             let opcode_operand: Vec<&str> = op_str.split(":").collect();
@@ -39,11 +41,11 @@ impl<'a> VM<'a> {
             code.push(
                 match &opcode_operand[0][..] {
                     "Fail" => OpCode::Fail,
-                    "Match" => OpCode::Match(operands[0]),
+                    "Match" => OpCode::Match(operands[0].parse::<ResultCode>().unwrap()),
                     "Jump" => OpCode::Jump(operands[0].parse::<usize>().unwrap()),
                     "Expect" => OpCode::Expect(
                         operands[0].parse::<usize>().unwrap(),
-                        operands[1].parse::<ValId>().unwrap(),
+                        operands[1].parse::<FeatId>().unwrap(),
                         operands[2].parse::<usize>().unwrap()),
                     "Next" => OpCode::Next,
                     "Noop" => OpCode::Noop,
@@ -55,11 +57,11 @@ impl<'a> VM<'a> {
         VM::new(code)
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.pc = 0;
     }
 
-    fn exec(&mut self, scanner: &mut Scanner) -> Option<&str> {
+    pub fn exec(&mut self, scanner: &mut Scanner) -> Option<ResultCode> {
         while self.pc < self.code.len() {
             let ref op = self.code[self.pc];
             let ref next_state = match *op {
@@ -88,61 +90,37 @@ impl<'a> VM<'a> {
 }
 
 trait Scanner {
-    fn expect(&self, col: usize, pat: ValId) -> Option<bool>;
+    fn expect(&mut self, col: usize, pat: FeatId) -> Option<bool>;
     fn next(&mut self) -> bool;
-    fn peek(&self) -> &Morpheme;
 }
 
-struct SliceScanner<'a> {
-    input: &'a [Morpheme],
+pub struct IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
+    input: Peekable<T>,
     position: usize,
     start: usize,
 }
 
-impl<'a> SliceScanner<'a> {
-    fn new(input: &'a [Morpheme]) -> SliceScanner<'a> {
-        SliceScanner { input: input, position: 0, start: 0 }
-    }
-
-    fn is_eos(&self) -> bool {
-        self.input.len() <= self.position
-    }
-
-    fn consume(&mut self) -> (&[Morpheme], &[Morpheme], &[Morpheme]) {
-        let pre = &self.input[0..self.start];
-        let post = &self.input[self.position+1..];
-        let ret = &self.input[self.start..self.position+1];
-        self.start = self.position;
-
-        (pre, ret, post)
-    }
-
-    fn step(&mut self) {
-        self.start += 1;
-        self.position = self.start;
+impl<'a, T> IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
+    pub fn new(mut input: T) -> IteratorScanner<'a, T> {
+        IteratorScanner { input: input.peekable(), position: 0, start: 0 }
     }
 }
 
-impl<'a> Scanner for SliceScanner<'a> {
-    fn expect(&self, col: usize, pat: ValId) -> Option<bool> {
-        if self.is_eos() {
-            return None;
+impl<'a, T> Scanner for IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
+    fn expect(&mut self, col: usize, feat_id: FeatId) -> Option<bool> {
+        match self.input.peek() {
+            Some(morpheme) => Some(morpheme.feature_ids[col] == feat_id),
+            None => None,
         }
-
-        Some(self.input[self.position][col] == pat)
     }
 
     fn next(&mut self) -> bool {
-        if self.is_eos() {
-            return false;
+        match self.input.next() {
+            Some(mopheme) => match self.input.peek() {
+                Some(_) => true,
+                None => false,
+            },
+            None => false,
         }
-
-        self.position += 1;
-
-        !self.is_eos()
-    }
-
-    fn peek(&self) -> &Morpheme {
-        &self.input[self.position]
     }
 }

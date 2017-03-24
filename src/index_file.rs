@@ -2,14 +2,16 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::{decode_from, encode_into};
 use std::fs::File;
 use std::path::PathBuf;
+use ::{Feat, FeatId, FeatIdSize, Cols};
 
 pub struct IndexFile {
     path: PathBuf,
 }
 
-pub struct IndexFileBody {
-    feature_indices: [Vec<String>; ::COLS],
-    sentence_index: Vec<(u32, u32)>,
+#[derive(RustcDecodable, RustcEncodable)]
+pub struct IndexData {
+    pub feature_indices: [Vec<Feat>; Cols],
+    pub sentence_index: Vec<(usize, usize)>,
 }
 
 impl IndexFile {
@@ -17,14 +19,14 @@ impl IndexFile {
         IndexFile { path: path }
     }
 
-    pub fn save(&self, index: [Vec<&[u8]>; ::COLS]) {
+    pub fn save(&self, index: IndexData) {
         let mut file = File::create(&self.path).unwrap();
         encode_into(&index, &mut file, SizeLimit::Infinite).unwrap();
     }
 
-    pub fn load(&self) -> [Vec<String>; ::COLS] {
+    pub fn load(&self) -> IndexData {
         let mut file = File::open(&self.path).unwrap();
-        let indices: [Vec<String>; ::COLS] = decode_from(&mut file, SizeLimit::Infinite).unwrap();
-        indices
+        let index: IndexData = decode_from(&mut file, SizeLimit::Infinite).unwrap();
+        index
     }
 }
