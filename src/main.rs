@@ -9,29 +9,27 @@ extern crate rustc_serialize;
 extern crate bincode;
 #[macro_use] extern crate clap;
 extern crate linked_hash_map;
-#[macro_use] extern crate itertools;
+extern crate itertools;
 
 use std::process;
 use std::path::PathBuf;
 use workspace::Workspace;
 
-use linked_hash_map::LinkedHashMap;
-
 type FeatId = u32;
 type Feat = Vec<u8>;
 // TODO: use `std::mem::size_of::<FeatId>()`
-pub const FeatIdSize: usize = 4;
-pub const Cols: usize = 10;
+pub const FEAT_ID_SIZE: usize = 4;
+pub const COLS: usize = 10;
 
 #[derive(Debug)]
 #[repr(packed)]
 pub struct Morpheme {
     sentence_id: u32,
-    feature_ids: [FeatId; Cols],
+    feature_ids: [FeatId; COLS],
 }
 
 // TODO: use `std::mem::size_of::<Morpheme>()`
-pub const MorphemeSize: usize = FeatIdSize * Cols + 4;
+pub const MORPHEME_SIZE: usize = FEAT_ID_SIZE * COLS + 4;
 
 impl<'a> Morpheme {
     pub fn from_slice(slice: &'a [u8]) -> &'a Morpheme {
@@ -42,15 +40,15 @@ impl<'a> Morpheme {
 
     pub fn as_slice(&self) -> &'a [u8] {
         let ptr: *const u8 = (self as *const Self) as *const u8;
-        unsafe { std::slice::from_raw_parts(ptr, MorphemeSize) }
+        unsafe { std::slice::from_raw_parts(ptr, MORPHEME_SIZE) }
     }
 
     pub fn new() -> Morpheme {
-        Morpheme { sentence_id: 0, feature_ids: [0; Cols] }
+        Morpheme { sentence_id: 0, feature_ids: [0; COLS] }
     }
 
     pub fn with_sentence_id(sentence_id: u32) -> Morpheme {
-        Morpheme { sentence_id: sentence_id, feature_ids: [0; Cols] }
+        Morpheme { sentence_id: sentence_id, feature_ids: [0; COLS] }
     }
 }
 

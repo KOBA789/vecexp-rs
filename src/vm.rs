@@ -1,9 +1,5 @@
-use std::io;
-use std::io::prelude::*;
-use std::cmp;
-use std::slice::Iter;
 use std::iter::Peekable;
-use ::{Feat, FeatId, FeatIdSize, Cols, Morpheme};
+use ::{FeatId, Morpheme};
 
 type ResultCode = u32;
 
@@ -29,7 +25,7 @@ enum State {
 
 impl<'a> VM {
     pub fn new(code: Vec<OpCode>) -> VM {
-        VM { pc: 0, code: code }
+        VM { pc: 1, code: code }
     }
 
     pub fn parse(input: Vec<String>) -> VM {
@@ -58,7 +54,7 @@ impl<'a> VM {
     }
 
     pub fn reset(&mut self) {
-        self.pc = 0;
+        self.pc = 1;
     }
 
     pub fn exec(&mut self, scanner: &mut Scanner) -> Option<ResultCode> {
@@ -89,37 +85,45 @@ impl<'a> VM {
     }
 }
 
-trait Scanner {
+pub trait Scanner {
     fn expect(&mut self, col: usize, pat: FeatId) -> Option<bool>;
     fn next(&mut self) -> bool;
 }
 
 pub struct IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
     input: Peekable<T>,
-    position: usize,
-    start: usize,
+    sentence_id: u32,
 }
 
 impl<'a, T> IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
-    pub fn new(mut input: T) -> IteratorScanner<'a, T> {
-        IteratorScanner { input: input.peekable(), position: 0, start: 0 }
+    pub fn new(input: T) -> IteratorScanner<'a, T> {
+        let mut peekable = input.peekable();
+        let sentence_id = peekable.peek().unwrap().sentence_id;
+        IteratorScanner { input: peekable, sentence_id: sentence_id }
+    }
+
+    fn peek(&mut self) -> Option<&Morpheme> {
+        if let Some(morpheme) = self.input.peek() {
+            if morpheme.sentence_id == self.sentence_id {
+                return Some(morpheme);
+            }
+        }
+        None
     }
 }
 
 impl<'a, T> Scanner for IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
     fn expect(&mut self, col: usize, feat_id: FeatId) -> Option<bool> {
-        match self.input.peek() {
+        match self.peek() {
             Some(morpheme) => Some(morpheme.feature_ids[col] == feat_id),
             None => None,
         }
     }
 
     fn next(&mut self) -> bool {
-        match self.input.next() {
-            Some(mopheme) => match self.input.peek() {
-                Some(_) => true,
-                None => false,
-            },
+        self.input.next();
+        match self.peek() {
+            Some(_) => true,
             None => false,
         }
     }

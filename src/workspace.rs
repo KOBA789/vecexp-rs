@@ -5,7 +5,7 @@ use indexer::Indexer;
 use index_file::IndexFile;
 use filebuffer::FileBuffer;
 use vm::{VM, IteratorScanner};
-use ::{Feat, FeatId, FeatIdSize, Cols, Morpheme, MorphemeSize};
+use ::{Morpheme, MORPHEME_SIZE};
 use itertools::Itertools;
 
 pub struct Workspace {
@@ -32,7 +32,7 @@ impl Workspace {
         let body_buf = FileBuffer::open(&self.body_path())?;
         let index_data = self.index_file().load();
 
-        let size: usize = body_buf.len() / MorphemeSize;
+        let size: usize = body_buf.len() / MORPHEME_SIZE;
         let ptr: *const Morpheme = body_buf.as_ptr() as *const Morpheme;
         let morphemes: &[Morpheme] = unsafe { ::std::slice::from_raw_parts(ptr, size) };
 
@@ -40,13 +40,13 @@ impl Workspace {
             let rest = morphemes[row_id..].into_iter();
             let mut scanner = IteratorScanner::new(rest);
             if let Some(ret) = vm.exec(&mut scanner) {
+                print!("{}: ", ret);
                 let head = &morphemes[row_id];
                 let (begin, end) = index_data.sentence_index[head.sentence_id as usize];
-                print!("{}: ", ret);
                 let context = &morphemes[begin..end+1].into_iter().map(|m| {
                     ::std::str::from_utf8(
                         index_data.feature_indices[0][
-                            m.feature_ids[0] as usize
+                            (m.feature_ids[0] - 1) as usize
                         ].as_slice()
                     ).unwrap()
                 }).join("");

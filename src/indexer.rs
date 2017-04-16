@@ -1,15 +1,12 @@
-use byteorder::{ByteOrder, LittleEndian};
 use filebuffer::FileBuffer;
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
-use std::str;
 use workspace::Workspace;
 use index_file::IndexData;
 use linked_hash_map::LinkedHashMap;
-use ::{Feat, FeatId, FeatIdSize, Cols, Morpheme};
+use ::{Feat, FeatId, COLS, Morpheme};
 
 macro_rules! init_array(
     ($ty:ty, $len:expr, $val:expr) => (
@@ -39,7 +36,7 @@ impl<'a> Indexer<'a> {
 
         let orig_buf = FileBuffer::open(&source_path)?;
         let mut out_file = BufWriter::new(File::create(body_path)?);
-        let mut feature_id_map_bundle = init_array!(LinkedHashMap<BorrowFeat, FeatId>, Cols, LinkedHashMap::new());
+        let mut feature_id_map_bundle = init_array!(LinkedHashMap<BorrowFeat, FeatId>, COLS, LinkedHashMap::new());
         // FIXME: Hardcoded
         feature_id_map_bundle[0].insert("。".as_bytes(), 1);
         feature_id_map_bundle[0].insert("◇".as_bytes(), 2);
@@ -88,7 +85,7 @@ impl<'a> Indexer<'a> {
         }
 
         {
-            let mut feature_indices = init_array!(Vec<Feat>, Cols, Vec::new());
+            let mut feature_indices = init_array!(Vec<Feat>, COLS, Vec::new());
             for (mut feature_index, feature_id_map) in feature_indices.iter_mut().zip(feature_id_map_bundle.into_iter()) {
                 *feature_index = feature_id_map.keys().map(|&key| key.to_vec()).collect();
             }
