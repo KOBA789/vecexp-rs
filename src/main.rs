@@ -2,6 +2,7 @@ mod vm;
 mod index_file;
 mod indexer;
 mod workspace;
+mod search_engine;
 
 extern crate filebuffer;
 extern crate byteorder;
@@ -73,7 +74,7 @@ fn main() {
     ).get_matches();
 
     let workspace_path = PathBuf::from(matches.value_of("workspace").unwrap());
-    let workspace = Workspace::new(workspace_path);
+    let mut workspace = Workspace::new(workspace_path);
 
     if let Some(matches) = matches.subcommand_matches("index") {
         let source_path = PathBuf::from(matches.value_of("source").unwrap());
