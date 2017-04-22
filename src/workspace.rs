@@ -40,7 +40,7 @@ impl Workspace {
         let ptr: *const Morpheme = body_buf.as_ptr() as *const Morpheme;
         let morphemes: &[Morpheme] = unsafe { ::std::slice::from_raw_parts(ptr, size) };
 
-        let vm = VM::new(inst, morphemes, index_data);
+        let vm = VM::new(inst.as_slice(), morphemes, index_data);
 
         let now = Instant::now();
 

@@ -1,13 +1,12 @@
 use ::{FeatId, Morpheme};
 use index_file::IndexData;
 use std::io::{self, Write};
-
-type ResultCode = u32;
+use std::io::BufWriter;
 
 #[derive(Debug)]
 pub enum InstCode {
     Expect(usize, FeatId),
-    Match(ResultCode),
+    Match,
     Jump(usize),
     Next,
     Split(usize, usize),
@@ -15,13 +14,13 @@ pub enum InstCode {
 }
 
 pub struct VM<'a> {
-    inst_seq: Vec<InstCode>,
+    inst_seq: &'a [InstCode],
     input: &'a [Morpheme],
     index_data: &'a IndexData,
 }
 
 impl<'a> VM<'a> {
-    pub fn new(inst_seq: Vec<InstCode>,
+    pub fn new(inst_seq: &'a [InstCode],
                input: &'a [Morpheme],
                index_data: &'a IndexData)
                -> VM<'a> {
@@ -39,7 +38,7 @@ impl<'a> VM<'a> {
             let opcode_operand: Vec<&str> = op_str.split(":").collect();
             let operands = &opcode_operand[1..];
             inst_seq.push(match &opcode_operand[0][..] {
-                "Match" => InstCode::Match(operands[0].parse::<ResultCode>().unwrap()),
+                "Match" => InstCode::Match,
                 "Jump" => InstCode::Jump(operands[0].parse::<usize>().unwrap()),
                 "Expect" => {
                     InstCode::Expect(operands[0].parse::<usize>().unwrap(),
@@ -58,68 +57,78 @@ impl<'a> VM<'a> {
         inst_seq
     }
 
-    pub fn exec(&self) -> Option<ResultCode> {
+    pub fn exec(&self) -> Option<()> {
+        let stdout = io::stdout();
+        let handle = stdout.lock();
+        let mut buffered = BufWriter::with_capacity(1024 * 1024, handle);
+
         for &(begin, end) in self.index_data.sentence_index.iter() {
             let sentence = &self.input[begin..end + 1];
-            let mut context: Option<Vec<u8>> = None;
-            let stdout = io::stdout();
-            let mut handle = stdout.lock();
+            let mut context: Option<Vec<&[u8]>> = None;
+
             for sp in 0..sentence.len() {
                 let ret = self.int_exec(sentence, 0, sp);
-                if ret {
+                if let Some(end_sp) = ret {
                     if context.is_none() {
                         let mut surface_list = Vec::<&[u8]>::with_capacity(sentence.len());
-                        let (_, size) = sentence.into_iter().fold((&mut surface_list, 0), |(list, size), m| {
-                            let surface = &self.index_data.features_per_column[0][m.feature_ids[0] as usize].as_slice();
-                            list.push(surface);
-                            (list, size + surface.len())
-                        });
-                        let mut whole_surface = Vec::<u8>::with_capacity(size);
-                        for surface in &mut surface_list {
-                            whole_surface.write_all(surface).unwrap();
+                        for m in sentence {
+                            surface_list.push((&self.index_data.features_per_column[0][m.feature_ids[0] as usize]).as_slice());
                         }
-                        context = Some(whole_surface);
+
+                        context = Some(surface_list);
                     }
-                    handle.write_all(context.as_ref().unwrap()).unwrap();
-                    handle.write_all(b"\n").unwrap();
+                    let context = &context.as_ref().unwrap();
+                    for &feat in &context[..sp] {
+                        buffered.write_all(feat).unwrap();
+                    }
+                    buffered.write_all(b"\t").unwrap();
+                    for &feat in &context[sp..end_sp] {
+                        buffered.write_all(feat).unwrap();
+                    }
+                    buffered.write_all(b"\t").unwrap();
+                    for &feat in &context[end_sp..] {
+                        buffered.write_all(feat).unwrap();
+                    }
+                    buffered.write_all(b"\n").unwrap();
                 }
             }
         }
+        buffered.flush().unwrap();
         None
     }
 
-    fn int_exec(&self, sentence: &[Morpheme], pc: usize, sp: usize) -> bool {
+    fn int_exec(&self, sentence: &[Morpheme], pc: usize, sp: usize) -> Option<usize> {
         let mut pc = pc;
         let mut sp = sp;
 
-        while pc < sentence.len() && sp < sentence.len() {
+        while sp < sentence.len() && pc < self.inst_seq.len() {
             match self.inst_seq[pc] {
                 InstCode::Expect(col, feat) => {
                     if sentence[sp].feature_ids[col] == feat {
                         pc += 1;
                     } else {
-                        return false;
+                        return None;
                     }
-                }
-                InstCode::Match(_) => {
-                    return true;
-                }
-                InstCode::Jump(next_pc) => {
-                    pc = next_pc;
                 }
                 InstCode::Next => {
                     sp += 1;
                     pc += 1;
                 }
-                InstCode::Noop => {
-                    pc += 1;
+                InstCode::Jump(next_pc) => {
+                    pc = next_pc;
                 }
                 InstCode::Split(x, y) => {
-                    return self.int_exec(sentence, x, sp) || self.int_exec(sentence, y, sp);
+                    return self.int_exec(sentence, x, sp).or_else(|| self.int_exec(sentence, y, sp));
+                }
+                InstCode::Match => {
+                    return Some(sp);
+                }
+                InstCode::Noop => {
+                    pc += 1;
                 }
             };
         }
 
-        return false;
+        return None;
     }
 }
