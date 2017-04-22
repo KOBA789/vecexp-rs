@@ -1,12 +1,12 @@
+use ::{COLS, Feat, FeatId, Morpheme};
 use filebuffer::FileBuffer;
+use index_file::IndexData;
+use linked_hash_map::LinkedHashMap;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
 use workspace::Workspace;
-use index_file::IndexData;
-use linked_hash_map::LinkedHashMap;
-use ::{Feat, FeatId, COLS, Morpheme};
 
 macro_rules! init_array(
     ($ty:ty, $len:expr, $val:expr) => (
@@ -36,8 +36,10 @@ impl<'a> Indexer<'a> {
 
         let orig_buf = FileBuffer::open(&source_path)?;
         let mut out_file = BufWriter::new(File::create(body_path)?);
-        let mut feature_id_map_bundle = init_array!(LinkedHashMap<BorrowFeat, FeatId>, COLS, LinkedHashMap::new());
+        let mut feature_id_map_bundle =
+            init_array!(LinkedHashMap<BorrowFeat, FeatId>, COLS, LinkedHashMap::new());
         // FIXME: Hardcoded
+        feature_id_map_bundle[0].insert("".as_bytes(), 0);
         feature_id_map_bundle[0].insert("。".as_bytes(), 1);
         feature_id_map_bundle[0].insert("◇".as_bytes(), 2);
         feature_id_map_bundle[0].insert("◆".as_bytes(), 3);
@@ -49,6 +51,7 @@ impl<'a> Indexer<'a> {
         feature_id_map_bundle[0].insert("■".as_bytes(), 9);
         feature_id_map_bundle[0].insert("○".as_bytes(), 10);
         feature_id_map_bundle[0].insert("●".as_bytes(), 11);
+        feature_id_map_bundle[0].insert("EOS".as_bytes(), 12);
 
         let mut current_sentence_head = 0;
         let mut sentence_id = 0;
@@ -60,15 +63,16 @@ impl<'a> Indexer<'a> {
             let cols = line.split(|&c| c == b',');
 
             {
-                let zipped = morpheme.feature_ids.iter_mut().zip(cols.zip(feature_id_map_bundle.iter_mut()));
+                let zipped =
+                    morpheme.feature_ids.iter_mut().zip(cols.zip(feature_id_map_bundle.iter_mut()));
                 for (mut feature_id, (col, mut feature_id_map)) in zipped {
                     let id = match feature_id_map.get(col) {
                         Some(&id) => id,
                         None => {
-                            let id = (feature_id_map.len() + 1) as FeatId;
+                            let id = feature_id_map.len() as FeatId;
                             feature_id_map.insert(col, id);
                             id
-                        },
+                        }
                     };
                     *feature_id = id;
                 }
@@ -76,7 +80,7 @@ impl<'a> Indexer<'a> {
             out_file.write(morpheme.as_slice())?;
 
             // FIXME: Hardcoded magic numbers
-            if 1 <= morpheme.feature_ids[0] && morpheme.feature_ids[0] <= 11 {
+            if morpheme.feature_ids[0] <= 12 {
                 sentence_index.push((current_sentence_head, row_id));
 
                 sentence_id += 1;
@@ -85,11 +89,15 @@ impl<'a> Indexer<'a> {
         }
 
         {
-            let mut feature_indices = init_array!(Vec<Feat>, COLS, Vec::new());
-            for (mut feature_index, feature_id_map) in feature_indices.iter_mut().zip(feature_id_map_bundle.into_iter()) {
+            let mut features_per_column = init_array!(Vec<Feat>, COLS, Vec::new());
+            for (mut feature_index, feature_id_map) in
+                features_per_column.iter_mut().zip(feature_id_map_bundle.into_iter()) {
                 *feature_index = feature_id_map.keys().map(|&key| key.to_vec()).collect();
             }
-            let index = IndexData { feature_indices: feature_indices, sentence_index: sentence_index };
+            let index = IndexData {
+                features_per_column: features_per_column,
+                sentence_index: sentence_index,
+            };
             let index_file = self.workspace.index_file();
             index_file.save(index);
         }

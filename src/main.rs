@@ -1,19 +1,21 @@
+#[macro_use]
+mod macros;
 mod vm;
 mod index_file;
 mod indexer;
 mod workspace;
-mod search_engine;
 
 extern crate filebuffer;
 extern crate byteorder;
 extern crate rustc_serialize;
 extern crate bincode;
-#[macro_use] extern crate clap;
+#[macro_use]
+extern crate clap;
 extern crate linked_hash_map;
 extern crate itertools;
 
-use std::process;
 use std::path::PathBuf;
+use std::process;
 use workspace::Workspace;
 
 type FeatId = u32;
@@ -45,11 +47,17 @@ impl<'a> Morpheme {
     }
 
     pub fn new() -> Morpheme {
-        Morpheme { sentence_id: 0, feature_ids: [0; COLS] }
+        Morpheme {
+            sentence_id: 0,
+            feature_ids: [0; COLS],
+        }
     }
 
     pub fn with_sentence_id(sentence_id: u32) -> Morpheme {
-        Morpheme { sentence_id: sentence_id, feature_ids: [0; COLS] }
+        Morpheme {
+            sentence_id: sentence_id,
+            feature_ids: [0; COLS],
+        }
     }
 }
 
@@ -64,14 +72,15 @@ fn main() {
         )
         (@subcommand query =>
             (about: "query")
-            (@arg opcode: +multiple "OpCode")
+            (@arg instseq: +multiple "InstSeq")
         )
         (@subcommand lookup =>
             (about: "lookup feature id")
             (@arg column: "Column")
             (@arg feature: "Feature")
         )
-    ).get_matches();
+    )
+        .get_matches();
 
     let workspace_path = PathBuf::from(matches.value_of("workspace").unwrap());
     let mut workspace = Workspace::new(workspace_path);
@@ -84,10 +93,11 @@ fn main() {
             Err(err) => {
                 println!("Error: {}", err);
                 process::exit(1);
-            },
+            }
         }
     } else if let Some(matches) = matches.subcommand_matches("query") {
-        let opcodes: Vec<_> = matches.values_of("opcode").unwrap().map(|s| s.to_string()).collect();
+        let opcodes: Vec<_> =
+            matches.values_of("instseq").unwrap().map(|s| s.to_string()).collect();
         workspace.search(opcodes).unwrap();
     } else if let Some(matches) = matches.subcommand_matches("lookup") {
         let column: usize = matches.value_of("column").unwrap().parse::<usize>().unwrap();

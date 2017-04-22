@@ -1,130 +1,125 @@
-use std::iter::Peekable;
 use ::{FeatId, Morpheme};
+use index_file::IndexData;
+use std::io::{self, Write};
 
 type ResultCode = u32;
 
 #[derive(Debug)]
-pub enum OpCode {
-    Expect(usize, FeatId, usize),
-    Fail,
+pub enum InstCode {
+    Expect(usize, FeatId),
     Match(ResultCode),
     Jump(usize),
     Next,
+    Split(usize, usize),
     Noop,
 }
 
-pub struct VM {
-    pc: usize,
-    code: Vec<OpCode>,
+pub struct VM<'a> {
+    inst_seq: Vec<InstCode>,
+    input: &'a [Morpheme],
+    index_data: &'a IndexData,
 }
 
-enum State {
-    Done(Option<ResultCode>),
-    Going(usize)
-}
-
-impl<'a> VM {
-    pub fn new(code: Vec<OpCode>) -> VM {
-        VM { pc: 1, code: code }
+impl<'a> VM<'a> {
+    pub fn new(inst_seq: Vec<InstCode>,
+               input: &'a [Morpheme],
+               index_data: &'a IndexData)
+               -> VM<'a> {
+        VM {
+            inst_seq: inst_seq,
+            input: input,
+            index_data: index_data,
+        }
     }
 
-    pub fn parse(input: Vec<String>) -> VM {
-        let mut code: Vec<OpCode> =  vec![];
+    pub fn parse(input: Vec<String>) -> Vec<InstCode> {
+        let mut inst_seq: Vec<InstCode> = vec![];
 
         for op_str in input {
             let opcode_operand: Vec<&str> = op_str.split(":").collect();
             let operands = &opcode_operand[1..];
-            code.push(
-                match &opcode_operand[0][..] {
-                    "Fail" => OpCode::Fail,
-                    "Match" => OpCode::Match(operands[0].parse::<ResultCode>().unwrap()),
-                    "Jump" => OpCode::Jump(operands[0].parse::<usize>().unwrap()),
-                    "Expect" => OpCode::Expect(
-                        operands[0].parse::<usize>().unwrap(),
-                        operands[1].parse::<FeatId>().unwrap(),
-                        operands[2].parse::<usize>().unwrap()),
-                    "Next" => OpCode::Next,
-                    "Noop" => OpCode::Noop,
-                    _ => panic!("unsupported opcode")
+            inst_seq.push(match &opcode_operand[0][..] {
+                "Match" => InstCode::Match(operands[0].parse::<ResultCode>().unwrap()),
+                "Jump" => InstCode::Jump(operands[0].parse::<usize>().unwrap()),
+                "Expect" => {
+                    InstCode::Expect(operands[0].parse::<usize>().unwrap(),
+                                     operands[1].parse::<FeatId>().unwrap())
                 }
-            );
+                "Split" => {
+                    InstCode::Split(operands[0].parse::<usize>().unwrap(),
+                                    operands[1].parse::<usize>().unwrap())
+                }
+                "Next" => InstCode::Next,
+                "Noop" => InstCode::Noop,
+                _ => panic!("unsupported opcode"),
+            });
         }
 
-        VM::new(code)
+        inst_seq
     }
 
-    pub fn reset(&mut self) {
-        self.pc = 1;
-    }
-
-    pub fn exec(&mut self, scanner: &mut Scanner) -> Option<ResultCode> {
-        while self.pc < self.code.len() {
-            let ref op = self.code[self.pc];
-            let ref next_state = match *op {
-                OpCode::Fail => State::Done(None),
-                OpCode::Match(ret) => State::Done(Some(ret)),
-                OpCode::Jump(pc) => State::Going(pc),
-                OpCode::Expect(col, pat, pc) => match scanner.expect(col, pat) {
-                    Some(ret) => State::Going(if ret { self.pc + 1 } else { pc }),
-                    None => State::Done(None),
-                },
-                OpCode::Next => match scanner.next() {
-                    true => State::Going(self.pc + 1),
-                    false => State::Done(None),
-                },
-                OpCode::Noop => State::Going(self.pc + 1)
-            };
-
-            match *next_state {
-                State::Done(ret) => return ret,
-                State::Going(pc) => self.pc = pc,
-            };
-        }
-
-        panic!("out of bound");
-    }
-}
-
-pub trait Scanner {
-    fn expect(&mut self, col: usize, pat: FeatId) -> Option<bool>;
-    fn next(&mut self) -> bool;
-}
-
-pub struct IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
-    input: Peekable<T>,
-    sentence_id: u32,
-}
-
-impl<'a, T> IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
-    pub fn new(input: T) -> IteratorScanner<'a, T> {
-        let mut peekable = input.peekable();
-        let sentence_id = peekable.peek().unwrap().sentence_id;
-        IteratorScanner { input: peekable, sentence_id: sentence_id }
-    }
-
-    fn peek(&mut self) -> Option<&Morpheme> {
-        if let Some(morpheme) = self.input.peek() {
-            if morpheme.sentence_id == self.sentence_id {
-                return Some(morpheme);
+    pub fn exec(&self) -> Option<ResultCode> {
+        for &(begin, end) in self.index_data.sentence_index.iter() {
+            let sentence = &self.input[begin..end + 1];
+            let mut context: Option<Vec<u8>> = None;
+            let stdout = io::stdout();
+            let mut handle = stdout.lock();
+            for sp in 0..sentence.len() {
+                let ret = self.int_exec(sentence, 0, sp);
+                if ret {
+                    if context.is_none() {
+                        let mut surface_list = Vec::<&[u8]>::with_capacity(sentence.len());
+                        let (_, size) = sentence.into_iter().fold((&mut surface_list, 0), |(list, size), m| {
+                            let surface = &self.index_data.features_per_column[0][m.feature_ids[0] as usize].as_slice();
+                            list.push(surface);
+                            (list, size + surface.len())
+                        });
+                        let mut whole_surface = Vec::<u8>::with_capacity(size);
+                        for surface in &mut surface_list {
+                            whole_surface.write_all(surface).unwrap();
+                        }
+                        context = Some(whole_surface);
+                    }
+                    handle.write_all(context.as_ref().unwrap()).unwrap();
+                    handle.write_all(b"\n").unwrap();
+                }
             }
         }
         None
     }
-}
 
-impl<'a, T> Scanner for IteratorScanner<'a, T> where T: Iterator<Item = &'a Morpheme> {
-    fn expect(&mut self, col: usize, feat_id: FeatId) -> Option<bool> {
-        match self.peek() {
-            Some(morpheme) => Some(morpheme.feature_ids[col] == feat_id),
-            None => None,
-        }
-    }
+    fn int_exec(&self, sentence: &[Morpheme], pc: usize, sp: usize) -> bool {
+        let mut pc = pc;
+        let mut sp = sp;
 
-    fn next(&mut self) -> bool {
-        self.input.next();
-        match self.peek() {
-            Some(_) => true,
-            None => false,
+        while pc < sentence.len() && sp < sentence.len() {
+            match self.inst_seq[pc] {
+                InstCode::Expect(col, feat) => {
+                    if sentence[sp].feature_ids[col] == feat {
+                        pc += 1;
+                    } else {
+                        return false;
+                    }
+                }
+                InstCode::Match(_) => {
+                    return true;
+                }
+                InstCode::Jump(next_pc) => {
+                    pc = next_pc;
+                }
+                InstCode::Next => {
+                    sp += 1;
+                    pc += 1;
+                }
+                InstCode::Noop => {
+                    pc += 1;
+                }
+                InstCode::Split(x, y) => {
+                    return self.int_exec(sentence, x, sp) || self.int_exec(sentence, y, sp);
+                }
+            };
         }
+
+        return false;
     }
 }

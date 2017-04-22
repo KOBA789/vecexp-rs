@@ -1,11 +1,12 @@
+use ::{MORPHEME_SIZE, Morpheme};
+use filebuffer::FileBuffer;
+use index_file::{IndexData, IndexFile};
+use indexer::Indexer;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use indexer::Indexer;
-use index_file::{IndexFile, IndexData};
-use filebuffer::FileBuffer;
-use ::{Morpheme, MORPHEME_SIZE};
-use search_engine::SearchEngine;
+use std::time::Instant;
+use vm::VM;
 
 pub struct Workspace {
     path: PathBuf,
@@ -14,7 +15,10 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(path: PathBuf) -> Workspace {
-        Workspace { path: path, index_data_cache: None }
+        Workspace {
+            path: path,
+            index_data_cache: None,
+        }
     }
 
     pub fn create_index(&self, source_path: PathBuf) -> io::Result<()> {
@@ -28,6 +32,7 @@ impl Workspace {
     }
 
     pub fn search(&mut self, query: Vec<String>) -> io::Result<()> {
+        let inst = VM::parse(query);
         let body_buf = FileBuffer::open(&self.body_path())?;
         let index_data = self.index_data();
 
@@ -35,18 +40,25 @@ impl Workspace {
         let ptr: *const Morpheme = body_buf.as_ptr() as *const Morpheme;
         let morphemes: &[Morpheme] = unsafe { ::std::slice::from_raw_parts(ptr, size) };
 
-        let engine = SearchEngine::new(index_data, morphemes);
-        engine.search(query);
+        let vm = VM::new(inst, morphemes, index_data);
 
+        let now = Instant::now();
+
+        vm.exec();
+
+        let elapsed = now.elapsed();
+        let ms = elapsed.as_secs() * 1_000 + (elapsed.subsec_nanos() / 1_000_000) as u64;
+        println_stderr!("completed in {} ms", ms);
         Ok(())
     }
 
     pub fn lookup(&mut self, column: usize, pat: Vec<u8>) -> Option<usize> {
         let index_data = self.index_data();
-        let features = &index_data.feature_indices[column];
+        let features = &index_data.features_per_column[column];
+        println!("{:?}", features);
         for (i, feat) in features.into_iter().enumerate() {
             if *feat == pat {
-                return Some(i + 1);
+                return Some(i);
             }
         }
 
