@@ -1,25 +1,24 @@
 #[macro_use]
 mod macros;
 mod vm;
-mod index_file;
 mod indexer;
+//mod index_bundle;
+mod features_file;
+mod sentence_index_file;
 mod workspace;
 
 extern crate filebuffer;
-extern crate byteorder;
-extern crate rustc_serialize;
-extern crate bincode;
 #[macro_use]
 extern crate clap;
 extern crate linked_hash_map;
-extern crate itertools;
 
 use std::path::PathBuf;
 use std::process;
 use workspace::Workspace;
 
 type FeatId = u32;
-type Feat = Vec<u8>;
+type Feat<'a> = &'a [u8];
+type FeatureList<'a> = Vec<Feat<'a>>;
 // TODO: use `std::mem::size_of::<FeatId>()`
 pub const FEAT_ID_SIZE: usize = 4;
 pub const COLS: usize = 10;
@@ -28,7 +27,7 @@ pub const COLS: usize = 10;
 #[repr(packed)]
 pub struct Morpheme {
     sentence_id: u32,
-    feature_ids: [FeatId; COLS],
+    feature_ids: [FeatId; COLS], // next_sibling: u32,
 }
 
 // TODO: use `std::mem::size_of::<Morpheme>()`
@@ -44,13 +43,6 @@ impl<'a> Morpheme {
     pub fn as_slice(&self) -> &'a [u8] {
         let ptr: *const u8 = (self as *const Self) as *const u8;
         unsafe { std::slice::from_raw_parts(ptr, MORPHEME_SIZE) }
-    }
-
-    pub fn new() -> Morpheme {
-        Morpheme {
-            sentence_id: 0,
-            feature_ids: [0; COLS],
-        }
     }
 
     pub fn with_sentence_id(sentence_id: u32) -> Morpheme {
@@ -101,7 +93,7 @@ fn main() {
         workspace.search(opcodes).unwrap();
     } else if let Some(matches) = matches.subcommand_matches("lookup") {
         let column: usize = matches.value_of("column").unwrap().parse::<usize>().unwrap();
-        let feature = matches.value_of("feature").unwrap().as_bytes().to_vec();
+        let feature = matches.value_of("feature").unwrap().as_bytes();
         match workspace.lookup(column, feature) {
             Some(feat_id) => println!("{}", feat_id),
             None => println!("not found."),

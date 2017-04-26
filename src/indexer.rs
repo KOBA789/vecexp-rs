@@ -1,24 +1,11 @@
-use ::{COLS, Feat, FeatId, Morpheme};
+use ::{COLS, FeatId, Morpheme};
 use filebuffer::FileBuffer;
-use index_file::IndexData;
 use linked_hash_map::LinkedHashMap;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
 use workspace::Workspace;
-
-macro_rules! init_array(
-    ($ty:ty, $len:expr, $val:expr) => (
-        {
-            let mut array: [$ty; $len] = unsafe { ::std::mem::uninitialized() };
-            for i in array.iter_mut() {
-                unsafe { ::std::ptr::write(i, $val); }
-            }
-            array
-        }
-    )
-);
 
 type BorrowFeat<'a> = &'a [u8];
 
@@ -53,12 +40,13 @@ impl<'a> Indexer<'a> {
         feature_id_map_bundle[0].insert("●".as_bytes(), 11);
         feature_id_map_bundle[0].insert("EOS".as_bytes(), 12);
 
-        let mut current_sentence_head = 0;
+        let mut current_sentence_head: u32 = 0;
         let mut sentence_id = 0;
-        let mut sentence_index = Vec::new();
+        let mut sentence_index = Vec::<(u32, u32)>::new();
 
         let perline = orig_buf.split(|&c| c == b'\n').filter(|r| r.len() > 0);
         for (row_id, line) in perline.enumerate() {
+            let row_id = row_id as u32;
             let mut morpheme = Morpheme::with_sentence_id(sentence_id);
             let cols = line.split(|&c| c == b',');
 
@@ -89,17 +77,14 @@ impl<'a> Indexer<'a> {
         }
 
         {
-            let mut features_per_column = init_array!(Vec<Feat>, COLS, Vec::new());
-            for (mut feature_index, feature_id_map) in
-                features_per_column.iter_mut().zip(feature_id_map_bundle.into_iter()) {
-                *feature_index = feature_id_map.keys().map(|&key| key.to_vec()).collect();
+            for (column, feature_id_map) in feature_id_map_bundle.into_iter().enumerate() {
+                let features: Vec<&[u8]> = feature_id_map.keys().map(|&key| key).collect();
+                let features_file = self.workspace.features_file(column);
+                features_file.save(features)?;
             }
-            let index = IndexData {
-                features_per_column: features_per_column,
-                sentence_index: sentence_index,
-            };
-            let index_file = self.workspace.index_file();
-            index_file.save(index);
+
+            let sentence_index_file = self.workspace.sentence_index_file();
+            sentence_index_file.save(sentence_index)?;
         }
         Ok(())
     }

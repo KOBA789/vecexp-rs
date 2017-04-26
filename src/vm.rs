@@ -1,5 +1,5 @@
 use ::{FeatId, Morpheme};
-use index_file::IndexData;
+use workspace::IndexData;
 use std::io::{self, Write};
 use std::io::BufWriter;
 
@@ -16,7 +16,7 @@ pub enum InstCode {
 pub struct VM<'a> {
     inst_seq: &'a [InstCode],
     input: &'a [Morpheme],
-    index_data: &'a IndexData,
+    index_data: &'a IndexData<'a>,
 }
 
 impl<'a> VM<'a> {
@@ -63,7 +63,8 @@ impl<'a> VM<'a> {
         let mut buffered = BufWriter::with_capacity(1024 * 1024, handle);
 
         for &(begin, end) in self.index_data.sentence_index.iter() {
-            let sentence = &self.input[begin..end + 1];
+            //println_stderr!("{}, {}", begin, end);
+            let sentence = &self.input[begin as usize..end as usize + 1];
             let mut context: Option<Vec<&[u8]>> = None;
 
             for sp in 0..sentence.len() {
@@ -72,7 +73,7 @@ impl<'a> VM<'a> {
                     if context.is_none() {
                         let mut surface_list = Vec::<&[u8]>::with_capacity(sentence.len());
                         for m in sentence {
-                            surface_list.push((&self.index_data.features_per_column[0][m.feature_ids[0] as usize]).as_slice());
+                            surface_list.push((&self.index_data.features_per_column[0][m.feature_ids[0] as usize]));
                         }
 
                         context = Some(surface_list);
@@ -118,7 +119,8 @@ impl<'a> VM<'a> {
                     pc = next_pc;
                 }
                 InstCode::Split(x, y) => {
-                    return self.int_exec(sentence, x, sp).or_else(|| self.int_exec(sentence, y, sp));
+                    return self.int_exec(sentence, x, sp)
+                        .or_else(|| self.int_exec(sentence, y, sp));
                 }
                 InstCode::Match => {
                     return Some(sp);

@@ -1,6 +1,7 @@
-use ::{MORPHEME_SIZE, Morpheme};
+use ::{Feat, FeatureList, MORPHEME_SIZE, Morpheme, COLS};
 use filebuffer::FileBuffer;
-use index_file::{IndexData, IndexFile};
+use features_file::FeaturesFile;
+use sentence_index_file::{SentenceIndex, SentenceIndexFile};
 use indexer::Indexer;
 use std::fs;
 use std::io;
@@ -10,14 +11,17 @@ use vm::VM;
 
 pub struct Workspace {
     path: PathBuf,
-    index_data_cache: Option<IndexData>,
+}
+
+pub struct IndexData<'a> {
+    pub features_per_column: [FeatureList<'a>; COLS],
+    pub sentence_index: SentenceIndex,
 }
 
 impl Workspace {
     pub fn new(path: PathBuf) -> Workspace {
         Workspace {
             path: path,
-            index_data_cache: None,
         }
     }
 
@@ -34,13 +38,25 @@ impl Workspace {
     pub fn search(&mut self, query: Vec<String>) -> io::Result<()> {
         let inst = VM::parse(query);
         let body_buf = FileBuffer::open(&self.body_path())?;
-        let index_data = self.index_data();
+
+        let mut pools = vec![Vec::new(); 10];
+        let mut features_per_column = init_array!(FeatureList, COLS, FeatureList::new());
+        for (column, (mut pool, mut features)) in pools.iter_mut().zip(&mut features_per_column).enumerate() {
+            *features = self.features_file(column).load(pool)?;
+        }
+
+        let sentence_index = self.sentence_index_file().load()?;
+
+        let index_data = IndexData {
+            features_per_column: features_per_column,
+            sentence_index: sentence_index,
+        };
 
         let size: usize = body_buf.len() / MORPHEME_SIZE;
         let ptr: *const Morpheme = body_buf.as_ptr() as *const Morpheme;
         let morphemes: &[Morpheme] = unsafe { ::std::slice::from_raw_parts(ptr, size) };
 
-        let vm = VM::new(inst.as_slice(), morphemes, index_data);
+        let vm = VM::new(inst.as_slice(), morphemes, &index_data);
 
         let now = Instant::now();
 
@@ -52,12 +68,11 @@ impl Workspace {
         Ok(())
     }
 
-    pub fn lookup(&mut self, column: usize, pat: Vec<u8>) -> Option<usize> {
-        let index_data = self.index_data();
-        let features = &index_data.features_per_column[column];
-        println!("{:?}", features);
+    pub fn lookup(&mut self, column: usize, pat: Feat) -> Option<usize> {
+        let mut pool = Vec::new();
+        let features = self.features_file(column).load(&mut pool).unwrap();
         for (i, feat) in features.into_iter().enumerate() {
-            if *feat == pat {
+            if feat == pat {
                 return Some(i);
             }
         }
@@ -65,23 +80,23 @@ impl Workspace {
         None
     }
 
-    pub fn index_path(&self) -> PathBuf {
-        self.path.join("index.bin")
-    }
-
     pub fn body_path(&self) -> PathBuf {
         self.path.join("body.bin")
     }
 
-    pub fn index_file(&self) -> IndexFile {
-        IndexFile::new(self.index_path())
+    pub fn features_path(&self, column: usize) -> PathBuf {
+        self.path.join(format!("features_{}.bin", column))
     }
 
-    pub fn index_data(&mut self) -> &IndexData {
-        if self.index_data_cache.is_none() {
-            let index_data = self.index_file().load();
-            self.index_data_cache = Some(index_data);
-        }
-        return self.index_data_cache.as_ref().unwrap();
+    pub fn sentence_index_path(&self) -> PathBuf {
+        self.path.join("sentence_index.bin")
+    }
+
+    pub fn features_file(&self, column: usize) -> FeaturesFile {
+        FeaturesFile::new(self.features_path(column))
+    }
+
+    pub fn sentence_index_file(&self) -> SentenceIndexFile {
+        SentenceIndexFile::new(self.sentence_index_path())
     }
 }
