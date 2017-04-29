@@ -2,7 +2,6 @@
 mod macros;
 mod vm;
 mod indexer;
-//mod index_bundle;
 mod features_file;
 mod sentence_index_file;
 mod workspace;
@@ -26,12 +25,15 @@ pub const COLS: usize = 10;
 #[derive(Debug)]
 #[repr(packed)]
 pub struct Morpheme {
-    sentence_id: u32,
-    feature_ids: [FeatId; COLS], // next_sibling: u32,
+    feature_ids: [FeatId; COLS],
+}
+
+pub struct BodyTable<'a> {
+    columns: [&'a [FeatId]; COLS],
 }
 
 // TODO: use `std::mem::size_of::<Morpheme>()`
-pub const MORPHEME_SIZE: usize = FEAT_ID_SIZE * COLS + 4;
+pub const MORPHEME_SIZE: usize = FEAT_ID_SIZE * COLS;
 
 impl<'a> Morpheme {
     pub fn from_slice(slice: &'a [u8]) -> &'a Morpheme {
@@ -45,9 +47,8 @@ impl<'a> Morpheme {
         unsafe { std::slice::from_raw_parts(ptr, MORPHEME_SIZE) }
     }
 
-    pub fn with_sentence_id(sentence_id: u32) -> Morpheme {
+    pub fn new() -> Morpheme {
         Morpheme {
-            sentence_id: sentence_id,
             feature_ids: [0; COLS],
         }
     }

@@ -41,13 +41,12 @@ impl<'a> Indexer<'a> {
         feature_id_map_bundle[0].insert("EOS".as_bytes(), 12);
 
         let mut current_sentence_head: u32 = 0;
-        let mut sentence_id = 0;
         let mut sentence_index = Vec::<(u32, u32)>::new();
 
         let perline = orig_buf.split(|&c| c == b'\n').filter(|r| r.len() > 0);
         for (row_id, line) in perline.enumerate() {
             let row_id = row_id as u32;
-            let mut morpheme = Morpheme::with_sentence_id(sentence_id);
+            let mut morpheme = Morpheme::new();
             let cols = line.split(|&c| c == b',');
 
             {
@@ -70,8 +69,6 @@ impl<'a> Indexer<'a> {
             // FIXME: Hardcoded magic numbers
             if morpheme.feature_ids[0] <= 12 {
                 sentence_index.push((current_sentence_head, row_id));
-
-                sentence_id += 1;
                 current_sentence_head = row_id + 1;
             }
         }
