@@ -35,22 +35,27 @@ impl Workspace {
         Ok(())
     }
 
+    fn index_data<'a>(&self, pools: &'a mut Vec<Vec<u8>>) -> IndexData<'a> {
+        *pools = vec![Vec::new(); 10];
+        let mut features_per_column = init_array!(FeatureList, COLS, FeatureList::new());
+        for (column, (mut pool, mut features)) in pools.iter_mut().zip(&mut features_per_column).enumerate() {
+            *features = self.features_file(column).load(pool).unwrap();
+        }
+
+        let sentence_index = self.sentence_index_file().load().unwrap();
+
+        IndexData {
+            features_per_column: features_per_column,
+            sentence_index: sentence_index,
+        }
+    }
+
     pub fn search(&mut self, query: Vec<String>) -> io::Result<()> {
         let inst = VM::parse(query);
         let body_buf = FileBuffer::open(&self.body_path())?;
 
-        let mut pools = vec![Vec::new(); 10];
-        let mut features_per_column = init_array!(FeatureList, COLS, FeatureList::new());
-        for (column, (mut pool, mut features)) in pools.iter_mut().zip(&mut features_per_column).enumerate() {
-            *features = self.features_file(column).load(pool)?;
-        }
-
-        let sentence_index = self.sentence_index_file().load()?;
-
-        let index_data = IndexData {
-            features_per_column: features_per_column,
-            sentence_index: sentence_index,
-        };
+        let mut pools = vec![];
+        let index_data = self.index_data(&mut pools);
 
         let size: usize = body_buf.len() / MORPHEME_SIZE;
         let ptr: *const Morpheme = body_buf.as_ptr() as *const Morpheme;
