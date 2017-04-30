@@ -32,6 +32,31 @@ pub struct BodyTable<'a> {
     columns: [&'a [FeatId]; COLS],
 }
 
+impl<'a> BodyTable<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        return self.columns[0].len();
+    }
+
+    #[inline]
+    fn slice(&self, begin: usize, end: usize) -> BodyTable<'a> {
+        BodyTable {
+            columns: [
+                &self.columns[0][begin..end],
+                &self.columns[1][begin..end],
+                &self.columns[2][begin..end],
+                &self.columns[3][begin..end],
+                &self.columns[4][begin..end],
+                &self.columns[5][begin..end],
+                &self.columns[6][begin..end],
+                &self.columns[7][begin..end],
+                &self.columns[8][begin..end],
+                &self.columns[9][begin..end],
+            ],
+        }
+    }
+}
+
 // TODO: use `std::mem::size_of::<Morpheme>()`
 pub const MORPHEME_SIZE: usize = FEAT_ID_SIZE * COLS;
 

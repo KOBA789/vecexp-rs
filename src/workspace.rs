@@ -1,4 +1,4 @@
-use ::{Feat, FeatureList, MORPHEME_SIZE, Morpheme, COLS};
+use ::{Feat, FeatureList, COLS, FeatId, BodyTable};
 use filebuffer::FileBuffer;
 use features_file::FeaturesFile;
 use sentence_index_file::{SentenceIndex, SentenceIndexFile};
@@ -52,16 +52,27 @@ impl Workspace {
 
     pub fn search(&mut self, query: Vec<String>) -> io::Result<()> {
         let inst = VM::parse(query);
-        let body_buf = FileBuffer::open(&self.body_path())?;
+
+        let mut bufs = vec![];
+        let body = BodyTable {
+            columns: [
+                self.load_column(&mut bufs, 0),
+                self.load_column(&mut bufs, 1),
+                self.load_column(&mut bufs, 2),
+                self.load_column(&mut bufs, 3),
+                self.load_column(&mut bufs, 4),
+                self.load_column(&mut bufs, 5),
+                self.load_column(&mut bufs, 6),
+                self.load_column(&mut bufs, 7),
+                self.load_column(&mut bufs, 8),
+                self.load_column(&mut bufs, 9),
+            ]
+        };
 
         let mut pools = vec![];
         let index_data = self.index_data(&mut pools);
 
-        let size: usize = body_buf.len() / MORPHEME_SIZE;
-        let ptr: *const Morpheme = body_buf.as_ptr() as *const Morpheme;
-        let morphemes: &[Morpheme] = unsafe { ::std::slice::from_raw_parts(ptr, size) };
-
-        let vm = VM::new(inst.as_slice(), morphemes, &index_data);
+        let vm = VM::new(inst.as_slice(), body, &index_data);
 
         let now = Instant::now();
 
@@ -85,8 +96,17 @@ impl Workspace {
         None
     }
 
-    pub fn body_path(&self) -> PathBuf {
-        self.path.join("body.bin")
+    fn load_column<'a>(&self, bufs: &mut Vec<FileBuffer>, column: usize) -> &'a [FeatId] {
+        let buf = FileBuffer::open(self.body_path(column)).unwrap();
+        let size: usize = buf.len() / ::std::mem::size_of::<FeatId>();
+        let ptr: *const FeatId = buf.as_ptr() as *const FeatId;
+        let feat_list: &[FeatId] = unsafe { ::std::slice::from_raw_parts(ptr, size) };
+        bufs.push(buf);
+        feat_list
+    }
+
+    pub fn body_path(&self, column: usize) -> PathBuf {
+        self.path.join(format!("body_{}.bin", column))
     }
 
     pub fn features_path(&self, column: usize) -> PathBuf {

@@ -1,4 +1,4 @@
-use ::{FeatId, Morpheme};
+use ::{FeatId, BodyTable};
 use workspace::IndexData;
 use std::io::{self, Write};
 use std::io::BufWriter;
@@ -15,13 +15,13 @@ pub enum InstCode {
 
 pub struct VM<'a> {
     inst_seq: &'a [InstCode],
-    input: &'a [Morpheme],
+    input: BodyTable<'a>,
     index_data: &'a IndexData<'a>,
 }
 
 impl<'a> VM<'a> {
     pub fn new(inst_seq: &'a [InstCode],
-               input: &'a [Morpheme],
+               input: BodyTable<'a>,
                index_data: &'a IndexData)
                -> VM<'a> {
         VM {
@@ -63,8 +63,7 @@ impl<'a> VM<'a> {
         let mut buffered = BufWriter::with_capacity(1024 * 1024, handle);
 
         for &(begin, end) in self.index_data.sentence_index.iter() {
-            //println_stderr!("{}, {}", begin, end);
-            let sentence = &self.input[begin as usize..end as usize + 1];
+            let sentence = &self.input.slice(begin as usize, end as usize);
             let mut context: Option<Vec<&[u8]>> = None;
 
             for sp in 0..sentence.len() {
@@ -72,8 +71,8 @@ impl<'a> VM<'a> {
                 if let Some(end_sp) = ret {
                     if context.is_none() {
                         let mut surface_list = Vec::<&[u8]>::with_capacity(sentence.len());
-                        for m in sentence {
-                            surface_list.push((&self.index_data.features_per_column[0][m.feature_ids[0] as usize]));
+                        for &m in sentence.columns[0] {
+                            surface_list.push((&self.index_data.features_per_column[0][m as usize]));
                         }
 
                         context = Some(surface_list);
@@ -98,14 +97,14 @@ impl<'a> VM<'a> {
         None
     }
 
-    fn int_exec(&self, sentence: &[Morpheme], pc: usize, sp: usize) -> Option<usize> {
+    fn int_exec(&self, sentence: &BodyTable, pc: usize, sp: usize) -> Option<usize> {
         let mut pc = pc;
         let mut sp = sp;
 
         while sp < sentence.len() && pc < self.inst_seq.len() {
             match self.inst_seq[pc] {
                 InstCode::Expect(col, feat) => {
-                    if sentence[sp].feature_ids[col] == feat {
+                    if sentence.columns[col][sp] == feat {
                         pc += 1;
                     } else {
                         return None;

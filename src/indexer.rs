@@ -1,9 +1,8 @@
-use ::{COLS, FeatId, Morpheme};
+use ::{COLS, FeatId};
 use filebuffer::FileBuffer;
 use linked_hash_map::LinkedHashMap;
-use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
+use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use workspace::Workspace;
 
@@ -18,11 +17,21 @@ impl<'a> Indexer<'a> {
         Indexer { workspace: workspace }
     }
 
-    pub fn execute(&self, source_path: PathBuf) -> ::std::io::Result<()> {
-        let body_path = self.workspace.body_path();
+    fn open_column_file(&self, column: usize) -> io::Result<io::BufWriter<fs::File>> {
+        let path = self.workspace.body_path(column);
+        Ok((io::BufWriter::new(fs::File::create(path)?)))
+    }
 
+    pub fn execute(&self, source_path: PathBuf) -> ::std::io::Result<()> {
         let orig_buf = FileBuffer::open(&source_path)?;
-        let mut out_file = BufWriter::new(File::create(body_path)?);
+
+        let mut columns = Vec::with_capacity(COLS);
+        for column in 0..COLS {
+            columns.push(self.open_column_file(column)?);
+        }
+        //let body_path = self.workspace.body_path();
+        //let mut out_file = BufWriter::new(File::create(body_path)?);
+
         let mut feature_id_map_bundle =
             init_array!(LinkedHashMap<BorrowFeat, FeatId>, COLS, LinkedHashMap::new());
         // FIXME: Hardcoded
@@ -46,30 +55,34 @@ impl<'a> Indexer<'a> {
         let perline = orig_buf.split(|&c| c == b'\n').filter(|r| r.len() > 0);
         for (row_id, line) in perline.enumerate() {
             let row_id = row_id as u32;
-            let mut morpheme = Morpheme::new();
             let cols = line.split(|&c| c == b',');
+            let mut row: [FeatId; COLS] = [0; COLS];
 
             {
                 let zipped =
-                    morpheme.feature_ids.iter_mut().zip(cols.zip(feature_id_map_bundle.iter_mut()));
-                for (mut feature_id, (col, mut feature_id_map)) in zipped {
-                    let id = match feature_id_map.get(col) {
+                    row.iter_mut().zip(cols.zip(feature_id_map_bundle.iter_mut()));
+                for (mut column, (feat, mut feature_id_map)) in zipped {
+                    let id = match feature_id_map.get(feat) {
                         Some(&id) => id,
                         None => {
                             let id = feature_id_map.len() as FeatId;
-                            feature_id_map.insert(col, id);
+                            feature_id_map.insert(feat, id);
                             id
                         }
                     };
-                    *feature_id = id;
+                    *column = id;
                 }
             }
-            out_file.write(morpheme.as_slice())?;
 
-            // FIXME: Hardcoded magic numbers
-            if morpheme.feature_ids[0] <= 12 {
-                sentence_index.push((current_sentence_head, row_id));
-                current_sentence_head = row_id + 1;
+            {
+                for (feat_id, mut column) in row.iter().zip(columns.iter_mut()) {
+                    let ptr = (feat_id as *const u32) as *const u8;
+                    column.write(unsafe { ::std::slice::from_raw_parts(ptr, 4) })?;
+                }
+                if row[0] <= 12 {
+                    sentence_index.push((current_sentence_head, row_id + 1)); // +1 means exclusive range
+                    current_sentence_head = row_id + 1;
+                }
             }
         }
 
