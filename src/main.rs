@@ -11,9 +11,10 @@ extern crate filebuffer;
 extern crate clap;
 extern crate linked_hash_map;
 
-use std::path::PathBuf;
-use std::process;
 use workspace::Workspace;
+
+use std::path;
+use std::process;
 
 type FeatId = u32;
 type Feat<'a> = &'a [u8];
@@ -101,11 +102,11 @@ fn main() {
     )
         .get_matches();
 
-    let workspace_path = PathBuf::from(matches.value_of("workspace").unwrap());
+    let workspace_path = path::PathBuf::from(matches.value_of("workspace").unwrap());
     let mut workspace = Workspace::new(workspace_path);
 
     if let Some(matches) = matches.subcommand_matches("index") {
-        let source_path = PathBuf::from(matches.value_of("source").unwrap());
+        let source_path = path::PathBuf::from(matches.value_of("source").unwrap());
         println!("indexing...");
         match workspace.create_index(source_path) {
             Ok(()) => println!("fully indexed."),
