@@ -26,6 +26,7 @@ pub trait IndexFileBundle {
     }
 
     fn index_data<'a>(&self, pools: &'a mut Vec<Vec<u8>>) -> IndexData<'a> {
+        println_stderr!("loading index...");
         *pools = vec![Vec::new(); 10];
         let mut features_per_column = init_array!(FeatList, COLS, FeatList::new());
         for (column, (mut pool, mut features)) in
@@ -34,6 +35,7 @@ pub trait IndexFileBundle {
         }
 
         let sentence_index = self.sentence_index_file().load().unwrap();
+        println_stderr!("index is loaded.");
 
         IndexData {
             features_per_column: features_per_column,
@@ -54,7 +56,8 @@ pub trait IndexFileBundle {
     }
 
     fn body_table<'a>(&self, mut bufs: &'a mut Vec<FileBuffer>) -> BodyTable<'a> {
-        unsafe {
+        println_stderr!("loading body data...");
+        let body = unsafe {
             BodyTable {
                 columns: [self.load_column(bufs, 0),
                           self.load_column(bufs, 1),
@@ -67,7 +70,9 @@ pub trait IndexFileBundle {
                           self.load_column(bufs, 8),
                           self.load_column(bufs, 9)],
             }
-        }
+        };
+        println_stderr!("body data is loaded.");
+        body
     }
 }
 

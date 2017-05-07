@@ -40,9 +40,9 @@ fn main() {
 
     if let Some(matches) = matches.subcommand_matches("index") {
         let source_path = PathBuf::from(matches.value_of("source").unwrap());
-        println!("indexing...");
+        println_stderr!("indexing...");
         try!(workspace.create_index(source_path));
-        println!("fully indexed.")
+        println_stderr!("fully indexed.")
     } else if let Some(matches) = matches.subcommand_matches("query") {
         let opcodes: Vec<_> =
             matches.values_of("instseq").unwrap().map(|s| s.to_string()).collect();
@@ -55,7 +55,7 @@ fn main() {
         let feature = String::from(matches.value_of("feature").unwrap());
         match try!(workspace.lookup(column, feature)) {
             Some(feat_id) => println!("{}", feat_id),
-            None => println!("not found."),
+            None => println_stderr!("not found."),
         }
     }
 }

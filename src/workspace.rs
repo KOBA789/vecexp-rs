@@ -39,13 +39,14 @@ impl Workspace {
 
         let vm = VM::new(inst.as_slice(), body, &index_data);
 
+        println_stderr!("querying...");
         let now = time::Instant::now();
 
         vm.exec(&mut buffered, limit);
 
         let elapsed = now.elapsed();
         let ms = elapsed.as_secs() * 1_000 + (elapsed.subsec_nanos() / 1_000_000) as u64;
-        println_stderr!("completed in {} ms", ms);
+        println_stderr!("query is completed in {} ms.", ms);
         Ok(())
     }
 
