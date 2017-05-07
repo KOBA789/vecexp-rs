@@ -90,6 +90,7 @@ fn main() {
         )
         (@subcommand query =>
             (about: "query")
+            (@arg limit: -n --limit +takes_value "Limits the number of results")
             (@arg instseq: +multiple "InstSeq")
         )
         (@subcommand lookup =>
@@ -116,7 +117,8 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("query") {
         let opcodes: Vec<_> =
             matches.values_of("instseq").unwrap().map(|s| s.to_string()).collect();
-        workspace.search(opcodes).unwrap();
+        let limit: Option<usize> = matches.value_of("limit").map({|v| v.parse::<usize>().unwrap() });
+        workspace.search(opcodes, limit).unwrap();
     } else if let Some(matches) = matches.subcommand_matches("lookup") {
         let column: usize = matches.value_of("column").unwrap().parse::<usize>().unwrap();
         let feature = matches.value_of("feature").unwrap().as_bytes();

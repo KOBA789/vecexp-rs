@@ -1,10 +1,12 @@
 use ::{COLS, FeatId};
+use workspace::Workspace;
+
 use filebuffer::FileBuffer;
 use linked_hash_map::LinkedHashMap;
+
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
-use workspace::Workspace;
+use std::path;
 
 type BorrowFeat<'a> = &'a [u8];
 
@@ -22,15 +24,13 @@ impl<'a> Indexer<'a> {
         Ok((io::BufWriter::new(fs::File::create(path)?)))
     }
 
-    pub fn execute(&self, source_path: PathBuf) -> ::std::io::Result<()> {
+    pub fn execute(&self, source_path: path::PathBuf) -> ::std::io::Result<()> {
         let orig_buf = FileBuffer::open(&source_path)?;
 
         let mut columns = Vec::with_capacity(COLS);
         for column in 0..COLS {
             columns.push(self.open_column_file(column)?);
         }
-        //let body_path = self.workspace.body_path();
-        //let mut out_file = BufWriter::new(File::create(body_path)?);
 
         let mut feature_id_map_bundle =
             init_array!(LinkedHashMap<BorrowFeat, FeatId>, COLS, LinkedHashMap::new());

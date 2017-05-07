@@ -1,16 +1,18 @@
 use ::{Feat, FeatureList, COLS, FeatId, BodyTable};
-use filebuffer::FileBuffer;
 use features_file::FeaturesFile;
 use sentence_index_file::{SentenceIndex, SentenceIndexFile};
 use indexer::Indexer;
-use std::fs;
-use std::io;
-use std::path::PathBuf;
-use std::time::Instant;
 use vm::VM;
 
+use filebuffer::FileBuffer;
+
+use std::fs;
+use std::io;
+use std::path;
+use std::time;
+
 pub struct Workspace {
-    path: PathBuf,
+    path: path::PathBuf,
 }
 
 pub struct IndexData<'a> {
@@ -19,13 +21,13 @@ pub struct IndexData<'a> {
 }
 
 impl Workspace {
-    pub fn new(path: PathBuf) -> Workspace {
+    pub fn new(path: path::PathBuf) -> Workspace {
         Workspace {
             path: path,
         }
     }
 
-    pub fn create_index(&self, source_path: PathBuf) -> io::Result<()> {
+    pub fn create_index(&self, source_path: path::PathBuf) -> io::Result<()> {
         fs::create_dir(&self.path)?;
 
         let indexer = Indexer::new(&self);
@@ -50,7 +52,7 @@ impl Workspace {
         }
     }
 
-    pub fn search(&mut self, query: Vec<String>) -> io::Result<()> {
+    pub fn search(&mut self, query: Vec<String>, limit: Option<usize>) -> io::Result<()> {
         let inst = VM::parse(query);
 
         let mut bufs = vec![];
@@ -72,11 +74,15 @@ impl Workspace {
         let mut pools = vec![];
         let index_data = self.index_data(&mut pools);
 
+        let stdout = io::stdout();
+        let handle = stdout.lock();
+        let mut buffered = io::BufWriter::with_capacity(1024 * 1024, handle);
+
         let vm = VM::new(inst.as_slice(), body, &index_data);
 
-        let now = Instant::now();
+        let now = time::Instant::now();
 
-        vm.exec();
+        vm.exec(&mut buffered, limit);
 
         let elapsed = now.elapsed();
         let ms = elapsed.as_secs() * 1_000 + (elapsed.subsec_nanos() / 1_000_000) as u64;
@@ -105,15 +111,15 @@ impl Workspace {
         feat_list
     }
 
-    pub fn body_path(&self, column: usize) -> PathBuf {
+    pub fn body_path(&self, column: usize) -> path::PathBuf {
         self.path.join(format!("body_{}.bin", column))
     }
 
-    pub fn features_path(&self, column: usize) -> PathBuf {
+    pub fn features_path(&self, column: usize) -> path::PathBuf {
         self.path.join(format!("features_{}.bin", column))
     }
 
-    pub fn sentence_index_path(&self) -> PathBuf {
+    pub fn sentence_index_path(&self) -> path::PathBuf {
         self.path.join("sentence_index.bin")
     }
 

@@ -1,7 +1,7 @@
 use ::{FeatId, BodyTable};
 use workspace::IndexData;
-use std::io::{self, Write};
-use std::io::BufWriter;
+
+use std::io;
 
 #[derive(Debug)]
 pub enum InstCode {
@@ -57,12 +57,10 @@ impl<'a> VM<'a> {
         inst_seq
     }
 
-    pub fn exec(&self) -> Option<()> {
-        let stdout = io::stdout();
-        let handle = stdout.lock();
-        let mut buffered = BufWriter::with_capacity(1024 * 1024, handle);
+    pub fn exec(&self, writer: &mut io::Write, limit: Option<usize>) -> Option<()> {
+        let mut result_size = 0;
 
-        for &(begin, end) in self.index_data.sentence_index.iter() {
+        'outer: for &(begin, end) in self.index_data.sentence_index.iter() {
             let sentence = &self.input.slice(begin as usize, end as usize);
             let mut context: Option<Vec<&[u8]>> = None;
 
@@ -79,21 +77,28 @@ impl<'a> VM<'a> {
                     }
                     let context = &context.as_ref().unwrap();
                     for &feat in &context[..sp] {
-                        buffered.write_all(feat).unwrap();
+                        writer.write_all(feat).unwrap();
                     }
-                    buffered.write_all(b"\t").unwrap();
+                    writer.write_all(b"\t").unwrap();
                     for &feat in &context[sp..end_sp] {
-                        buffered.write_all(feat).unwrap();
+                        writer.write_all(feat).unwrap();
                     }
-                    buffered.write_all(b"\t").unwrap();
+                    writer.write_all(b"\t").unwrap();
                     for &feat in &context[end_sp..] {
-                        buffered.write_all(feat).unwrap();
+                        writer.write_all(feat).unwrap();
                     }
-                    buffered.write_all(b"\n").unwrap();
+                    writer.write_all(b"\n").unwrap();
+
+                    result_size += 1;
+                    if let Some(actual_limit) = limit {
+                        if actual_limit <= result_size {
+                            break 'outer;
+                        }
+                    }
                 }
             }
         }
-        buffered.flush().unwrap();
+        writer.flush().unwrap();
         None
     }
 
