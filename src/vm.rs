@@ -1,4 +1,4 @@
-use index::{FeatId, IndexData, BodyTable};
+use index::{BodyTable, FeatId, IndexData};
 
 use std::io;
 

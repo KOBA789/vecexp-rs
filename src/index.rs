@@ -41,7 +41,10 @@ pub trait IndexFileBundle {
         }
     }
 
-    unsafe fn load_column<'a>(&self, mut bufs: &mut Vec<FileBuffer>, column: usize) -> &'a [FeatId] {
+    unsafe fn load_column<'a>(&self,
+                              mut bufs: &mut Vec<FileBuffer>,
+                              column: usize)
+                              -> &'a [FeatId] {
         let buf = FileBuffer::open(self.body_path(column)).unwrap();
         let size: usize = buf.len() / ::std::mem::size_of::<FeatId>();
         let ptr: *const FeatId = buf.as_ptr() as *const FeatId;
@@ -53,18 +56,16 @@ pub trait IndexFileBundle {
     fn body_table<'a>(&self, mut bufs: &'a mut Vec<FileBuffer>) -> BodyTable<'a> {
         unsafe {
             BodyTable {
-                columns: [
-                    self.load_column(bufs, 0),
-                    self.load_column(bufs, 1),
-                    self.load_column(bufs, 2),
-                    self.load_column(bufs, 3),
-                    self.load_column(bufs, 4),
-                    self.load_column(bufs, 5),
-                    self.load_column(bufs, 6),
-                    self.load_column(bufs, 7),
-                    self.load_column(bufs, 8),
-                    self.load_column(bufs, 9)
-                ],
+                columns: [self.load_column(bufs, 0),
+                          self.load_column(bufs, 1),
+                          self.load_column(bufs, 2),
+                          self.load_column(bufs, 3),
+                          self.load_column(bufs, 4),
+                          self.load_column(bufs, 5),
+                          self.load_column(bufs, 6),
+                          self.load_column(bufs, 7),
+                          self.load_column(bufs, 8),
+                          self.load_column(bufs, 9)],
             }
         }
     }

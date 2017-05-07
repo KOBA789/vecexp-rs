@@ -1,9 +1,9 @@
+use index::{self, IndexFileBundle};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::time;
 use vm::VM;
-use index::{self, IndexFileBundle};
 
 pub struct Workspace {
     path: PathBuf,
