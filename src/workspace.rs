@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::time;
-use vm::VM;
+use vm::{self, VM};
 
 pub struct Workspace {
     path: PathBuf,
@@ -24,9 +24,12 @@ impl Workspace {
         Ok(())
     }
 
-    pub fn search(&mut self, query: Vec<String>, limit: Option<usize>) -> io::Result<()> {
-        let inst = VM::parse(query);
+    pub fn search2(&mut self, query: Vec<String>, limit: Option<usize>) -> io::Result<()> {
+        let iseq = VM::parse(query);
+        self.search(iseq, limit)
+    }
 
+    pub fn search(&mut self, iseq: Vec<vm::InstCode>, limit: Option<usize>) -> io::Result<()> {
         let mut bufs = vec![];
         let body = self.body_table(&mut bufs);
 
@@ -37,7 +40,7 @@ impl Workspace {
         let handle = stdout.lock();
         let mut buffered = io::BufWriter::with_capacity(1024 * 1024, handle);
 
-        let vm = VM::new(inst.as_slice(), body, &index_data);
+        let vm = VM::new(iseq.as_slice(), body, &index_data);
 
         println_stderr!("querying...");
         let now = time::Instant::now();
@@ -53,6 +56,10 @@ impl Workspace {
     pub fn lookup(&mut self, column: usize, pat: String) -> io::Result<Option<usize>> {
         let pat_bytes = pat.as_bytes();
         self.features_file(column).lookup(pat_bytes)
+    }
+
+    pub fn decode(&mut self, column: usize, feat_id: u32) -> io::Result<String> {
+        self.features_file(column).decode(feat_id)
     }
 }
 

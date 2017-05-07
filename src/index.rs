@@ -227,6 +227,12 @@ impl FeaturesFile {
         }
         Ok(None)
     }
+
+    pub fn decode(&self, feat_id: FeatId) -> io::Result<String> {
+        let mut pool = Vec::new();
+        let features = self.load(&mut pool)?;
+        Ok(::std::str::from_utf8(features[feat_id as usize]).unwrap().to_string())
+    }
 }
 
 pub struct SentenceIndexFile {
