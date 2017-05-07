@@ -1,26 +1,86 @@
-use ::{COLS, FeatId, FeatureList};
-
 use filebuffer::FileBuffer;
 use linked_hash_map::LinkedHashMap;
 
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use workspace::Workspace;
+
+pub type FeatId = u32;
+pub type Feat<'a> = &'a [u8];
+pub type FeatList<'a> = Vec<Feat<'a>>;
+pub const COLS: usize = 10;
 
 type BorrowFeat<'a> = &'a [u8];
 
+pub trait IndexFileBundle {
+    fn body_path(&self, usize) -> PathBuf;
+    fn features_path(&self, usize) -> PathBuf;
+    fn sentence_index_path(&self) -> PathBuf;
+
+    fn features_file(&self, column: usize) -> FeaturesFile {
+        FeaturesFile::new(self.features_path(column))
+    }
+
+    fn sentence_index_file(&self) -> SentenceIndexFile {
+        SentenceIndexFile::new(self.sentence_index_path())
+    }
+
+    fn index_data<'a>(&self, pools: &'a mut Vec<Vec<u8>>) -> IndexData<'a> {
+        *pools = vec![Vec::new(); 10];
+        let mut features_per_column = init_array!(FeatList, COLS, FeatList::new());
+        for (column, (mut pool, mut features)) in
+            pools.iter_mut().zip(&mut features_per_column).enumerate() {
+            *features = self.features_file(column).load(pool).unwrap();
+        }
+
+        let sentence_index = self.sentence_index_file().load().unwrap();
+
+        IndexData {
+            features_per_column: features_per_column,
+            sentence_index: sentence_index,
+        }
+    }
+
+    unsafe fn load_column<'a>(&self, mut bufs: &mut Vec<FileBuffer>, column: usize) -> &'a [FeatId] {
+        let buf = FileBuffer::open(self.body_path(column)).unwrap();
+        let size: usize = buf.len() / ::std::mem::size_of::<FeatId>();
+        let ptr: *const FeatId = buf.as_ptr() as *const FeatId;
+        let feat_list: &'a [FeatId] = ::std::slice::from_raw_parts(ptr, size);
+        bufs.push(buf);
+        feat_list
+    }
+
+    fn body_table<'a>(&self, mut bufs: &'a mut Vec<FileBuffer>) -> BodyTable<'a> {
+        unsafe {
+            BodyTable {
+                columns: [
+                    self.load_column(bufs, 0),
+                    self.load_column(bufs, 1),
+                    self.load_column(bufs, 2),
+                    self.load_column(bufs, 3),
+                    self.load_column(bufs, 4),
+                    self.load_column(bufs, 5),
+                    self.load_column(bufs, 6),
+                    self.load_column(bufs, 7),
+                    self.load_column(bufs, 8),
+                    self.load_column(bufs, 9)
+                ],
+            }
+        }
+    }
+}
+
 pub struct Indexer<'a> {
-    workspace: &'a Workspace,
+    bundle: &'a IndexFileBundle,
 }
 
 impl<'a> Indexer<'a> {
-    pub fn new(workspace: &'a Workspace) -> Indexer<'a> {
-        Indexer { workspace: workspace }
+    pub fn new(bundle: &'a IndexFileBundle) -> Indexer<'a> {
+        Indexer { bundle: bundle }
     }
 
     fn open_column_file(&self, column: usize) -> io::Result<io::BufWriter<fs::File>> {
-        let path = self.workspace.body_path(column);
+        let path = self.bundle.body_path(column);
         Ok((io::BufWriter::new(fs::File::create(path)?)))
     }
 
@@ -88,11 +148,11 @@ impl<'a> Indexer<'a> {
         {
             for (column, feature_id_map) in feature_id_map_bundle.into_iter().enumerate() {
                 let features: Vec<&[u8]> = feature_id_map.keys().map(|&key| key).collect();
-                let features_file = self.workspace.features_file(column);
+                let features_file = self.bundle.features_file(column);
                 features_file.save(features)?;
             }
 
-            let sentence_index_file = self.workspace.sentence_index_file();
+            let sentence_index_file = self.bundle.sentence_index_file();
             sentence_index_file.save(sentence_index)?;
         }
         Ok(())
@@ -108,7 +168,7 @@ impl FeaturesFile {
         FeaturesFile { path: path }
     }
 
-    pub fn load<'a>(&self, mut pool: &'a mut Vec<u8>) -> io::Result<FeatureList<'a>> {
+    pub fn load<'a>(&self, mut pool: &'a mut Vec<u8>) -> io::Result<FeatList<'a>> {
         let metadata = fs::metadata(&self.path)?;
         let file_len = metadata.len() as usize;
 
@@ -135,7 +195,7 @@ impl FeaturesFile {
         Ok(features)
     }
 
-    pub fn save(&self, features: FeatureList) -> io::Result<()> {
+    pub fn save(&self, features: FeatList) -> io::Result<()> {
         let mut file = fs::File::create(&self.path)?;
         let len_buf: [u8; 4] = unsafe { ::std::mem::transmute(features.len() as u32) };
         file.write_all(&len_buf)?;
@@ -149,6 +209,17 @@ impl FeaturesFile {
         }
         file.flush()?;
         Ok(())
+    }
+
+    pub fn lookup(&self, pat: Feat) -> io::Result<Option<usize>> {
+        let mut pool = Vec::new();
+        let features = self.load(&mut pool)?;
+        for (i, feat) in features.into_iter().enumerate() {
+            if feat == pat {
+                return Ok(Some(i));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -190,5 +261,37 @@ impl SentenceIndexFile {
         }
 
         Ok(sentence_index)
+    }
+}
+
+pub struct IndexData<'a> {
+    pub features_per_column: [FeatList<'a>; COLS],
+    pub sentence_index: SentenceIndex,
+}
+
+pub struct BodyTable<'a> {
+    pub columns: [&'a [FeatId]; COLS],
+}
+
+impl<'a> BodyTable<'a> {
+    #[inline]
+    pub fn len(&self) -> usize {
+        return self.columns[0].len();
+    }
+
+    #[inline]
+    pub fn slice(&self, begin: usize, end: usize) -> BodyTable<'a> {
+        BodyTable {
+            columns: [&self.columns[0][begin..end],
+                      &self.columns[1][begin..end],
+                      &self.columns[2][begin..end],
+                      &self.columns[3][begin..end],
+                      &self.columns[4][begin..end],
+                      &self.columns[5][begin..end],
+                      &self.columns[6][begin..end],
+                      &self.columns[7][begin..end],
+                      &self.columns[8][begin..end],
+                      &self.columns[9][begin..end]],
+        }
     }
 }

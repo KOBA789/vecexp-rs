@@ -33,3 +33,17 @@ macro_rules! init_array_fn {
         }
     }
 }
+
+macro_rules! try {
+    ($do:expr) => {
+        {
+            match $do {
+                Ok(ret) => ret,
+                Err(err) => {
+                    println!("Error: {}", err);
+                    process::exit(1);
+                }
+            }
+        }
+    }
+}
