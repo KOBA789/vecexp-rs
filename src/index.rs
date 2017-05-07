@@ -1,12 +1,12 @@
-use ::{COLS, FeatId};
-use workspace::Workspace;
+use ::{COLS, FeatId, FeatureList};
 
 use filebuffer::FileBuffer;
 use linked_hash_map::LinkedHashMap;
 
 use std::fs;
-use std::io::{self, Write};
-use std::path;
+use std::io::{self, Read, Write};
+use std::path::PathBuf;
+use workspace::Workspace;
 
 type BorrowFeat<'a> = &'a [u8];
 
@@ -24,7 +24,7 @@ impl<'a> Indexer<'a> {
         Ok((io::BufWriter::new(fs::File::create(path)?)))
     }
 
-    pub fn execute(&self, source_path: path::PathBuf) -> ::std::io::Result<()> {
+    pub fn execute(&self, source_path: PathBuf) -> ::std::io::Result<()> {
         let orig_buf = FileBuffer::open(&source_path)?;
 
         let mut columns = Vec::with_capacity(COLS);
@@ -59,8 +59,7 @@ impl<'a> Indexer<'a> {
             let mut row: [FeatId; COLS] = [0; COLS];
 
             {
-                let zipped =
-                    row.iter_mut().zip(cols.zip(feature_id_map_bundle.iter_mut()));
+                let zipped = row.iter_mut().zip(cols.zip(feature_id_map_bundle.iter_mut()));
                 for (mut column, (feat, mut feature_id_map)) in zipped {
                     let id = match feature_id_map.get(feat) {
                         Some(&id) => id,
@@ -97,5 +96,99 @@ impl<'a> Indexer<'a> {
             sentence_index_file.save(sentence_index)?;
         }
         Ok(())
+    }
+}
+
+pub struct FeaturesFile {
+    path: PathBuf,
+}
+
+impl FeaturesFile {
+    pub fn new(path: PathBuf) -> FeaturesFile {
+        FeaturesFile { path: path }
+    }
+
+    pub fn load<'a>(&self, mut pool: &'a mut Vec<u8>) -> io::Result<FeatureList<'a>> {
+        let metadata = fs::metadata(&self.path)?;
+        let file_len = metadata.len() as usize;
+
+        let mut file = fs::File::open(&self.path)?;
+
+        let mut len_buf = [0u8; 4];
+        file.read_exact(&mut len_buf)?;
+        let features_len = unsafe { ::std::mem::transmute::<_, u32>(len_buf) } as usize;
+
+        let mut offsets = vec![0; features_len];
+        file.read_exact(&mut offsets)?;
+
+        *pool = vec![0; file_len - (4 + features_len)];
+        file.read_exact(&mut pool)?;
+
+        let mut features = Vec::<&[u8]>::with_capacity(features_len);
+
+        let mut ptr: usize = 0;
+        for offset in offsets {
+            features.push(&pool[ptr..][..offset as usize]);
+            ptr += offset as usize;
+        }
+
+        Ok(features)
+    }
+
+    pub fn save(&self, features: FeatureList) -> io::Result<()> {
+        let mut file = fs::File::create(&self.path)?;
+        let len_buf: [u8; 4] = unsafe { ::std::mem::transmute(features.len() as u32) };
+        file.write_all(&len_buf)?;
+        let mut offsets = Vec::<u8>::with_capacity(features.len());
+        for feat in &features {
+            offsets.push(feat.len() as u8);
+        }
+        file.write_all(&offsets)?;
+        for feat in &features {
+            file.write_all(feat)?;
+        }
+        file.flush()?;
+        Ok(())
+    }
+}
+
+pub struct SentenceIndexFile {
+    path: PathBuf,
+}
+
+pub type SentenceIndex = Vec<(u32, u32)>;
+
+impl SentenceIndexFile {
+    pub fn new(path: PathBuf) -> SentenceIndexFile {
+        SentenceIndexFile { path: path }
+    }
+
+    pub fn save(&self, sentence_index: SentenceIndex) -> io::Result<()> {
+        let file = fs::File::create(&self.path)?;
+        let mut writer = io::BufWriter::new(file);
+        for (begin, end) in sentence_index {
+            let bp = &begin as *const u32 as *const u8;
+            let ep = &end as *const u32 as *const u8;
+            writer.write_all(unsafe { ::std::slice::from_raw_parts(bp, 4) })?;
+            writer.write_all(unsafe { ::std::slice::from_raw_parts(ep, 4) })?;
+        }
+
+        Ok(())
+    }
+
+    pub fn load(&self) -> io::Result<SentenceIndex> {
+        let metadata = fs::metadata(&self.path)?;
+        let file_len = metadata.len() as usize;
+        let mut sentence_index = SentenceIndex::with_capacity(file_len / 8);
+
+        let mut file = fs::File::open(&self.path)?;
+        let mut buf: [u8; 8] = [0; 8];
+        while let Ok(()) = file.read_exact(&mut buf) {
+            let begin: &u32 = unsafe { ::std::mem::transmute(&buf[..4] as *const [u8] as *const u8) };
+            let end: &u32 = unsafe { ::std::mem::transmute(&buf[4..] as *const [u8] as *const u8) };
+            sentence_index.push((*begin, *end));
+        }
+
+        Ok(sentence_index)
     }
 }

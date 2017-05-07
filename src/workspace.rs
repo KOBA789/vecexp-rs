@@ -1,36 +1,32 @@
-use ::{Feat, FeatureList, COLS, FeatId, BodyTable};
-use features_file::FeaturesFile;
-use sentence_index_file::{SentenceIndex, SentenceIndexFile};
-use indexer::Indexer;
-use vm::VM;
+use ::{BodyTable, COLS, Feat, FeatId, FeatureList};
 
 use filebuffer::FileBuffer;
+use index;
 
 use std::fs;
 use std::io;
-use std::path;
+use std::path::PathBuf;
 use std::time;
+use vm::VM;
 
 pub struct Workspace {
-    path: path::PathBuf,
+    path: PathBuf,
 }
 
 pub struct IndexData<'a> {
     pub features_per_column: [FeatureList<'a>; COLS],
-    pub sentence_index: SentenceIndex,
+    pub sentence_index: index::SentenceIndex,
 }
 
 impl Workspace {
-    pub fn new(path: path::PathBuf) -> Workspace {
-        Workspace {
-            path: path,
-        }
+    pub fn new(path: PathBuf) -> Workspace {
+        Workspace { path: path }
     }
 
-    pub fn create_index(&self, source_path: path::PathBuf) -> io::Result<()> {
+    pub fn create_index(&self, source_path: PathBuf) -> io::Result<()> {
         fs::create_dir(&self.path)?;
 
-        let indexer = Indexer::new(&self);
+        let indexer = index::Indexer::new(&self);
 
         indexer.execute(source_path)?;
 
@@ -40,7 +36,8 @@ impl Workspace {
     fn index_data<'a>(&self, pools: &'a mut Vec<Vec<u8>>) -> IndexData<'a> {
         *pools = vec![Vec::new(); 10];
         let mut features_per_column = init_array!(FeatureList, COLS, FeatureList::new());
-        for (column, (mut pool, mut features)) in pools.iter_mut().zip(&mut features_per_column).enumerate() {
+        for (column, (mut pool, mut features)) in
+            pools.iter_mut().zip(&mut features_per_column).enumerate() {
             *features = self.features_file(column).load(pool).unwrap();
         }
 
@@ -57,18 +54,16 @@ impl Workspace {
 
         let mut bufs = vec![];
         let body = BodyTable {
-            columns: [
-                self.load_column(&mut bufs, 0),
-                self.load_column(&mut bufs, 1),
-                self.load_column(&mut bufs, 2),
-                self.load_column(&mut bufs, 3),
-                self.load_column(&mut bufs, 4),
-                self.load_column(&mut bufs, 5),
-                self.load_column(&mut bufs, 6),
-                self.load_column(&mut bufs, 7),
-                self.load_column(&mut bufs, 8),
-                self.load_column(&mut bufs, 9),
-            ]
+            columns: [self.load_column(&mut bufs, 0),
+                      self.load_column(&mut bufs, 1),
+                      self.load_column(&mut bufs, 2),
+                      self.load_column(&mut bufs, 3),
+                      self.load_column(&mut bufs, 4),
+                      self.load_column(&mut bufs, 5),
+                      self.load_column(&mut bufs, 6),
+                      self.load_column(&mut bufs, 7),
+                      self.load_column(&mut bufs, 8),
+                      self.load_column(&mut bufs, 9)],
         };
 
         let mut pools = vec![];
@@ -111,23 +106,23 @@ impl Workspace {
         feat_list
     }
 
-    pub fn body_path(&self, column: usize) -> path::PathBuf {
+    pub fn body_path(&self, column: usize) -> PathBuf {
         self.path.join(format!("body_{}.bin", column))
     }
 
-    pub fn features_path(&self, column: usize) -> path::PathBuf {
+    pub fn features_path(&self, column: usize) -> PathBuf {
         self.path.join(format!("features_{}.bin", column))
     }
 
-    pub fn sentence_index_path(&self) -> path::PathBuf {
+    pub fn sentence_index_path(&self) -> PathBuf {
         self.path.join("sentence_index.bin")
     }
 
-    pub fn features_file(&self, column: usize) -> FeaturesFile {
-        FeaturesFile::new(self.features_path(column))
+    pub fn features_file(&self, column: usize) -> index::FeaturesFile {
+        index::FeaturesFile::new(self.features_path(column))
     }
 
-    pub fn sentence_index_file(&self) -> SentenceIndexFile {
-        SentenceIndexFile::new(self.sentence_index_path())
+    pub fn sentence_index_file(&self) -> index::SentenceIndexFile {
+        index::SentenceIndexFile::new(self.sentence_index_path())
     }
 }

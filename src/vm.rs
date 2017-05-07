@@ -1,7 +1,7 @@
-use ::{FeatId, BodyTable};
-use workspace::IndexData;
+use ::{BodyTable, FeatId};
 
 use std::io;
+use workspace::IndexData;
 
 #[derive(Debug)]
 pub enum InstCode {

@@ -1,9 +1,7 @@
 #[macro_use]
 mod macros;
 mod vm;
-mod indexer;
-mod features_file;
-mod sentence_index_file;
+mod index;
 mod workspace;
 
 extern crate filebuffer;
@@ -11,10 +9,10 @@ extern crate filebuffer;
 extern crate clap;
 extern crate linked_hash_map;
 
-use workspace::Workspace;
 
 use std::path;
 use std::process;
+use workspace::Workspace;
 
 type FeatId = u32;
 type Feat<'a> = &'a [u8];
@@ -42,18 +40,16 @@ impl<'a> BodyTable<'a> {
     #[inline]
     fn slice(&self, begin: usize, end: usize) -> BodyTable<'a> {
         BodyTable {
-            columns: [
-                &self.columns[0][begin..end],
-                &self.columns[1][begin..end],
-                &self.columns[2][begin..end],
-                &self.columns[3][begin..end],
-                &self.columns[4][begin..end],
-                &self.columns[5][begin..end],
-                &self.columns[6][begin..end],
-                &self.columns[7][begin..end],
-                &self.columns[8][begin..end],
-                &self.columns[9][begin..end],
-            ],
+            columns: [&self.columns[0][begin..end],
+                      &self.columns[1][begin..end],
+                      &self.columns[2][begin..end],
+                      &self.columns[3][begin..end],
+                      &self.columns[4][begin..end],
+                      &self.columns[5][begin..end],
+                      &self.columns[6][begin..end],
+                      &self.columns[7][begin..end],
+                      &self.columns[8][begin..end],
+                      &self.columns[9][begin..end]],
         }
     }
 }
@@ -74,9 +70,7 @@ impl<'a> Morpheme {
     }
 
     pub fn new() -> Morpheme {
-        Morpheme {
-            feature_ids: [0; COLS],
-        }
+        Morpheme { feature_ids: [0; COLS] }
     }
 }
 
@@ -118,7 +112,9 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("query") {
         let opcodes: Vec<_> =
             matches.values_of("instseq").unwrap().map(|s| s.to_string()).collect();
-        let limit: Option<usize> = matches.value_of("limit").map({|v| v.parse::<usize>().unwrap() });
+        let limit: Option<usize> = matches.value_of("limit").map({
+            |v| v.parse::<usize>().unwrap()
+        });
         workspace.search(opcodes, limit).unwrap();
     } else if let Some(matches) = matches.subcommand_matches("lookup") {
         let column: usize = matches.value_of("column").unwrap().parse::<usize>().unwrap();
