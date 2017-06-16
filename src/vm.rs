@@ -69,7 +69,7 @@ impl<'a> VM<'a> {
                     if context.is_none() {
                         let mut surface_list = Vec::<&[u8]>::with_capacity(sentence.len());
                         for &m in sentence.columns[0] {
-                            surface_list.push((&self.index_data.features_per_column[0][m as usize]));
+                            surface_list.push(&self.index_data.features_per_column[0][m as usize]);
                         }
 
                         context = Some(surface_list);
@@ -81,8 +81,8 @@ impl<'a> VM<'a> {
                     writer.write_all(b"\t").unwrap();
                     for &feat in &context[sp..end_sp] {
                         writer.write_all(feat).unwrap();
+                        writer.write_all(b"\t").unwrap();
                     }
-                    writer.write_all(b"\t").unwrap();
                     for &feat in &context[end_sp..] {
                         writer.write_all(feat).unwrap();
                     }

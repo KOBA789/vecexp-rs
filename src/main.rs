@@ -44,8 +44,7 @@ fn main() {
             (@arg column: "Column")
             (@arg feature_id: "Feature ID")
         )
-    )
-        .get_matches();
+    ).get_matches();
 
     let workspace_path = PathBuf::from(matches.value_of("workspace").unwrap());
     let mut workspace = Workspace::new(workspace_path);

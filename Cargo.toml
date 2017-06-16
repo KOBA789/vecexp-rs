@@ -5,12 +5,8 @@ authors = ["Hidekazu Kobayashi <kobahide789@gmail.com>"]
 
 [dependencies]
 filebuffer = { git = "https://github.com/ruuda/filebuffer.git", rev = "4a55662" }
-rustc-serialize = "*"
-bincode = "0.6.1"
-byteorder = "*"
 clap = "2.20.0"
 linked-hash-map = "0.4.1"
-itertools = "0.5.9"
 combine = "2.3.2"
 
 [profile.release]

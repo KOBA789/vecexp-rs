@@ -22,18 +22,6 @@ macro_rules! init_array {
     }
 }
 
-macro_rules! init_array_fn {
-    ($ty:ty, $len:expr, $val:expr) => {
-        {
-            let mut array: [$ty; $len] = unsafe { ::std::mem::uninitialized() };
-            for (i, e) in array.iter_mut().enumerate() {
-                unsafe { ::std::ptr::write(e, $val(i)); }
-            }
-            array
-        }
-    }
-}
-
 macro_rules! try {
     ($do:expr) => {
         {

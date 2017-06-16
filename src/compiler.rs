@@ -35,67 +35,76 @@ impl<I> Query<I>
         many1::<String, _>(digit()).map(|ds| ds.parse::<u32>().unwrap()).parse_lazy(input).into()
     }
 
-    fn pattern() -> QueryParser<Node, I> {
-        fn_parser(Query::<I>::pattern_, "pattern")
+    fn feature() -> QueryParser<Option<u32>, I> {
+        fn_parser(Query::<I>::feature_, "feature")
     }
-    fn pattern_(input: I) -> ParseResult<Node, I> {
-        sep_by1(Query::<I>::integer().map(|a| Some(a)).or(char('*').map(|_| None)), char('-')).map(|feat_id| Node::Pattern(feat_id)).parse_lazy(input).into()
-    }
-
-    fn concat() -> QueryParser<Node, I> {
-        fn_parser(Query::<I>::concat_, "concat")
-    }
-    fn concat_(input: I) -> ParseResult<Node, I> {
-        sep_by1(Query::<I>::atom(), many1::<Vec<_>, _>(space())).map(|nodes| Node::Concat(nodes)).parse_lazy(input).into()
+    fn feature_(input: I) -> ParseResult<Option<u32>, I> {
+        let int = Query::<I>::integer().map(|a| Some(a));
+        let any = char('/').map(|_| None);
+        int.or(any)
+            .parse_lazy(input).into()
     }
 
-    fn union() -> QueryParser<Node, I> {
-        fn_parser(Query::<I>::union_, "union")
+    fn morpheme() -> QueryParser<Node, I> {
+        fn_parser(Query::<I>::morpheme_, "pattern")
     }
-    fn union_(input: I) -> ParseResult<Node, I> {
-        chainl1(
-            optional(Query::<I>::concat()).map(|opt| {
-                match opt {
-                    Some(opt) => opt,
-                    None => Node::Empty,
-                }
-            }),
-            token('|').map(|_| |left, right| Node::Union(Box::new(left), Box::new(right)))).parse_lazy(input).into()
+    fn morpheme_(input: I) -> ParseResult<Node, I> {
+        sep_by1(Query::<I>::feature(), char('-')).skip(spaces())
+            .map(|features| Node::Pattern(features))
+            .parse_lazy(input).into()
     }
 
-    fn group() -> QueryParser<Node, I> {
-        fn_parser(Query::<I>::group_, "group")
+    fn factor() -> QueryParser<Node, I> {
+        fn_parser(Query::<I>::factor_, "bare")
     }
-    fn group_(input: I) -> ParseResult<Node, I> {
-        between(char('('), char(')'), Query::<I>::union()).map(|union| union).parse_lazy(input).into()
-    }
-
-    fn bare() -> QueryParser<Node, I> {
-        fn_parser(Query::<I>::bare_, "bare")
-    }
-    fn bare_(input: I) -> ParseResult<Node, I> {
-        try(Query::<I>::pattern()).or(Query::<I>::group()).parse_lazy(input).into()
-    }
-
-    fn atom() -> QueryParser<Node, I> {
-        fn_parser(Query::<I>::atom_, "atom")
-    }
-    fn atom_(input: I) -> ParseResult<Node, I> {
-        try(Query::<I>::star()).or(Query::<I>::bare()).parse_lazy(input).into()
+    fn factor_(input: I) -> ParseResult<Node, I> {
+        let paren_open = char('(').skip(spaces());
+        let paren_close = char(')').skip(spaces());
+        let group = between(paren_open, paren_close, Query::<I>::subexpr());
+        Query::<I>::morpheme().or(group).parse_lazy(input).into()
     }
 
     fn star() -> QueryParser<Node, I> {
         fn_parser(Query::<I>::star_, "star")
     }
     fn star_(input: I) -> ParseResult<Node, I> {
-        (Query::<I>::bare(), char('*')).map(|(atom, _)| Node::Star(Box::new(atom))).parse_lazy(input).into()
+        let star = char('*').skip(spaces());
+        (Query::<I>::factor(), optional(star)).map(|(factor, star)| match star {
+            Some(_) => Node::Star(Box::new(factor)),
+            None => factor,
+        }).parse_lazy(input).into()
+    }
+
+    fn subseq() -> QueryParser<Node, I> {
+        fn_parser(Query::<I>::subseq_, "subseq")
+    }
+    fn subseq_(input: I) -> ParseResult<Node, I> {
+        many1::<Vec<_>, _>(Query::<I>::star()).map(|stars| Node::Concat(stars)).parse_lazy(input).into()
+    }
+
+    fn seq() -> QueryParser<Node, I> {
+        fn_parser(Query::<I>::seq_, "seq")
+    }
+    fn seq_(input: I) -> ParseResult<Node, I> {
+        optional(Query::<I>::subseq()).map(|opt| match opt {
+            Some(opt) => opt,
+            None => Node::Empty,
+        }).parse_lazy(input).into()
+    }
+
+    fn subexpr() -> QueryParser<Node, I> {
+        fn_parser(Query::<I>::subexpr_, "union")
+    }
+    fn subexpr_(input: I) -> ParseResult<Node, I> {
+        let pipe_op = token('|').skip(spaces()).map(|_| |left, right| Node::Union(Box::new(left), Box::new(right)));
+        try(chainl1(Query::<I>::seq(), pipe_op)).or(Query::<I>::seq()).parse_lazy(input).into()
     }
 
     fn value() -> FnPtrParser<Node, I> {
         parser(Query::<I>::value_ as fn(_) -> _)
     }
     fn value_(input: I) -> ParseResult<Node, I> {
-        Query::<I>::union().skip(eof()).parse_lazy(input).into()
+        Query::<I>::subexpr().skip(eof()).parse_lazy(input).into()
     }
 }
 
@@ -117,8 +126,11 @@ fn optimize(node: Node) -> Node {
 
 pub fn parse(query_str: &str) -> Node {
     let mut parser = Query::value();
-    let (node, _) = parser.parse(query_str).unwrap();
-    optimize(node)
+    let (node, _) = parser.parse(State::new(query_str)).unwrap();
+    //println!("{:?}", node);
+    let opt = optimize(node);
+    //println!("{:?}", opt);
+    opt
 }
 
 type ISeq = LinkedList<InstCode>;
@@ -169,5 +181,7 @@ pub fn compile(node: Node) -> Vec<InstCode> {
 
     let (mut iseq, _) = asm(node, 0);
     iseq.push_back(InstCode::Match);
-    iseq.into_iter().collect()
+    let iseq_vec = iseq.into_iter().collect();
+    //println!("{:?}", iseq_vec);
+    iseq_vec
 }
