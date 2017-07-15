@@ -79,9 +79,11 @@ impl<'a> VM<'a> {
                         writer.write_all(feat).unwrap();
                     }
                     writer.write_all(b"\t").unwrap();
-                    for &feat in &context[sp..end_sp] {
-                        writer.write_all(feat).unwrap();
-                        writer.write_all(b"\t").unwrap();
+                    for (i, &column) in sentence.columns.iter().enumerate() {
+                        for &m in column {
+                            writer.write_all(&self.index_data.features_per_column[i][m as usize]).unwrap();
+                            writer.write_all(b"\t").unwrap();
+                        }
                     }
                     for &feat in &context[end_sp..] {
                         writer.write_all(feat).unwrap();
